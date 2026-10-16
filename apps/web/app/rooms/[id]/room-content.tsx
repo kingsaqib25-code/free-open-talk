@@ -41,6 +41,7 @@ import {
 import { VoiceProvider } from '@/lib/services/p2p';
 import { VoicePanel, type PresenceParticipant } from './voice-panel';
 import { ParticipantMenu } from '@/components/room/participant-menu';
+import { RoomSettings } from '@/components/room/room-settings';
 import { getBlockedDevices } from '@/lib/blocked';
 import { Hand, Smile, Reply } from '@/components/ui/icons';
 
@@ -171,8 +172,21 @@ export function RoomContent({ roomId }: RoomContentProps) {
                                 <Users className="h-3.5 w-3.5" />
                                 {room.participantCount ?? 0}/{room.maxParticipants}
                             </span>
+                            {room.locked && (
+                                <span className="text-xs text-amber-400 font-medium">· Private</span>
+                            )}
                         </div>
                     </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                    {iAmOwner && (
+                        <RoomSettings
+                            roomId={roomId}
+                            deviceId={deviceId}
+                            roomName={room.name}
+                            locked={room.locked === true}
+                        />
+                    )}
                 </div>
             </header>
 

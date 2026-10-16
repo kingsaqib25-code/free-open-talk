@@ -17,21 +17,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Free2Talk - Practice Languages with Native Speakers',
+  title: 'Free Open Talk - Practice Languages with Native Speakers',
   description: 'Join voice rooms and practice languages with native speakers from around the world. Free, open community for language learners.',
   keywords: ['language learning', 'language exchange', 'voice chat', 'language practice', 'native speakers'],
-  authors: [{ name: 'Free2Talk Community' }],
+  authors: [{ name: 'Free Open Talk Community' }],
   openGraph: {
     type: 'website',
-    title: 'Free2Talk - Practice Languages with Native Speakers',
+    title: 'Free Open Talk - Practice Languages with Native Speakers',
     description: 'Join voice rooms and practice languages with native speakers from around the world.',
-    siteName: 'Free2Talk',
+    siteName: 'Free Open Talk',
   },
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Free2Talk',
+    title: 'Free Open Talk',
   },
   icons: {
     icon: [

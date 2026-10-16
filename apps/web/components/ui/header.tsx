@@ -24,7 +24,7 @@ export function Header({ title = 'Voice Rooms', showCreateButton = true }: Heade
                             {/* <span className="text-white font-bold text-sm">F2T</span> */}
                             <Image
                                 src="/white-logo.png"
-                                alt="Free2Talk Logo"
+                                alt="Free Open Talk Logo"
                                 width={74}
                                 height={74}
                             // className="h-6 w-6"

@@ -1,8 +1,8 @@
-/* Free2Talk service worker — offline shell + runtime caching.
+/* Free Open Talk service worker — offline shell + runtime caching.
  * $0 design: no push vendor, no analytics. Web Push is handled via the
  * Web Push API below (VAPID, self-hosted through our own API route).
  */
-const CACHE = 'free2talk-v1';
+const CACHE = 'freeopentalk-v1';
 const OFFLINE_URL = '/offline.html';
 const PRECACHE = [OFFLINE_URL, '/manifest.webmanifest', '/icons/icon-192.png'];
 

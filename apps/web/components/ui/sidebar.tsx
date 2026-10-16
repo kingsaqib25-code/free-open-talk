@@ -105,7 +105,7 @@ export function Sidebar() {
                         <div>
                             <Image
                                 src="/white-logo.png"
-                                alt="Free2Talk Logo"
+                                alt="Free Open Talk Logo"
                                 width={74}
                                 height={74}
                                 priority
@@ -117,7 +117,7 @@ export function Sidebar() {
                                 <span className="text-white font-bold text-base">F2T</span>
                             </noscript>
                         </div>
-                        <span className="font-bold text-lg text-text-primary">Free2Talk</span>
+                        <span className="font-bold text-lg text-text-primary">Free Open Talk</span>
                     </Link>
                 ) : (
                     <Link href="/" className="mx-auto group">
@@ -126,7 +126,7 @@ export function Sidebar() {
                             {/* <span className="text-white font-bold text-base">F2T</span> */}
                             <Image
                                 src="/white-logo.png"
-                                alt="Free2Talk Logo"
+                                alt="Free Open Talk Logo"
                                 width={74}
                                 height={74}
                                 className="fill-white"

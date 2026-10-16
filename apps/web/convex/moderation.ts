@@ -180,6 +180,24 @@ export const unban = mutation({
   },
 });
 
+/** Active bans for this room (room-scoped + site-wide), newest first — host view. */
+export const listBans = query({
+  args: { roomId: v.id("rooms"), deviceId: v.string() },
+  handler: async (ctx, args) => {
+    const room = await ctx.db.get(args.roomId);
+    if (!room || room.ownerDeviceId !== args.deviceId) return [];
+    const now = Date.now();
+    const all = await ctx.db.query("bans").collect();
+    return all
+      .filter(
+        (b) =>
+          b.expiresAt > now &&
+          (b.roomId === undefined || b.roomId === args.roomId)
+      )
+      .sort((a, b) => b.expiresAt - a.expiresAt);
+  },
+});
+
 /** Reports for this room, newest first — host moderation queue. */
 export const listReports = query({
   args: { roomId: v.id("rooms"), deviceId: v.string(), limit: v.optional(v.number()) },
