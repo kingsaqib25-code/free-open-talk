@@ -89,6 +89,8 @@ export function ParticipantMenu({
             setBlocked(true);
             onAction?.(`Blocked ${targetNickname} — their messages and audio are hidden for you.`);
         }
+        // Tell the voice mesh to mute/unmute this peer's audio immediately.
+        window.dispatchEvent(new CustomEvent('fot:blocklist-changed'));
     };
 
     return (

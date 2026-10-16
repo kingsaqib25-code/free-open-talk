@@ -20,6 +20,7 @@
 import { EventEmitter } from './event-emitter';
 import { MediaDevicesManager } from './media-devices';
 import { AudioLevelMonitor } from './audio-level-monitor';
+import { isBlocked } from '@/lib/blocked';
 import type {
     VoiceServiceConfig,
     VoiceServiceEvents,
@@ -518,6 +519,8 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
             const el = new Audio();
             el.autoplay = true;
             (el as HTMLAudioElement & { playsInline?: boolean }).playsInline = true;
+            // Honor the personal block list: blocked peers are muted locally.
+            el.muted = isBlocked(peerId);
             slot.audioEl = el;
         }
         slot.audioEl.srcObject = slot.remoteStream;
@@ -613,6 +616,16 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
         if (!el) return;
         const attempt = () => el.play().catch(() => this.queueResume(peerId));
         void attempt();
+    }
+
+    /** Re-apply the personal block list to all remote audio elements.
+     *  Called when the user blocks/unblocks someone mid-call. */
+    refreshBlockedAudio(): void {
+        for (const [peerId, slot] of this.peers) {
+            if (slot.audioEl) {
+                slot.audioEl.muted = isBlocked(peerId);
+            }
+        }
     }
 
     /** Browsers block audio before user interaction — resume on first gesture. */

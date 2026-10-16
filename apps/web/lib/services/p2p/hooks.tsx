@@ -95,9 +95,13 @@ export function VoiceProvider({ children, debug = false, deviceId: deviceIdProp 
         mountedRef.current = true;
         let cancelled = false;
 
+        // Personal block list changed (block/unblock mid-call) — re-apply
+        // local muting to every remote audio element.
+        const onBlocklistChanged = () => service.refreshBlockedAudio();
+        window.addEventListener('fot:blocklist-changed', onBlocklistChanged);
+
         // Outbound signaling → Convex.
-        service.setSignalOut((toDeviceId, type, payload) => {
-            const roomId = service.getState().currentRoomId;
+        service.setSignalOut((toDeviceId, type, payload) => {            const roomId = service.getState().currentRoomId;
             if (!roomId) return;
             pushSignal({
                 roomId: roomId as any,
@@ -131,6 +135,7 @@ export function VoiceProvider({ children, debug = false, deviceId: deviceIdProp 
             cancelled = true;
             mountedRef.current = false;
             unsubscribe();
+            window.removeEventListener('fot:blocklist-changed', onBlocklistChanged);
             // Leave the mesh on unmount (page navigation).
             void service.leaveRoom().catch(() => {});
         };
