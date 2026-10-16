@@ -230,59 +230,6 @@ export function Sidebar() {
                 })}
             </nav>
 
-            {/* User Section */}
-            <div className="p-1.5 border-t border-surface-border/50">
-                {isAuthenticated && user ? (
-                    <div className="space-y-2">
-                        <div className={cn(
-                            'flex items-center gap-3 p-2 rounded-xl',
-                            'hover:bg-surface-hover transition-colors',
-                            isCollapsed && 'justify-center p-0'
-                        )}>
-                            <Link href="/profile" className={isCollapsed ? '' : 'flex items-center gap-3 flex-1'}>
-                                <Avatar
-                                    src={user.avatarUrl ?? undefined}
-                                    alt={user.displayName || user.username}
-                                    fallback={user.displayName || user.username}
-                                    size="md"
-                                    status="online"
-                                    showStatus
-                                    className="ring-2 ring-primary-500/20"
-                                />
-                                {!isCollapsed && (
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-semibold text-foreground truncate">
-                                            {user.displayName || user.username}
-                                        </p>
-                                        <p className="text-xs text-muted-foreground truncate">
-                                            @{user.username}
-                                        </p>
-                                    </div>
-                                )}
-                            </Link>
-                            {!isCollapsed && (
-                                <SettingsCollapseMenu />
-                            )}
-                        </div>
-                    </div>
-                ) : (
-                    <Button
-                        variant="secondary"
-                        size={isCollapsed ? 'icon' : 'md'}
-                        className={cn(
-                            'bg-primary-500/10 text-primary-400',
-                            'hover:bg-primary-500/20',
-                            'border border-primary-500/20',
-                            !isCollapsed && 'w-full'
-                        )}
-                        asChild
-                    >
-                        <Link href="/login">
-                            {isCollapsed ? <User className="h-5 w-5" /> : 'Sign In'}
-                        </Link>
-                    </Button>
-                )}
-            </div>
         </aside>
     );
 }

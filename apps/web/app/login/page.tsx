@@ -1,9 +1,6 @@
-import { AuthContent } from './auth-content';
+import { redirect } from 'next/navigation';
 
+// Auth removed: Free Open Talk is guest-first. No sign-up, no sign-in.
 export default function LoginPage() {
-    return (
-        <div className="min-h-screen bg-background-primary flex items-center justify-center p-4">
-            <AuthContent />
-        </div>
-    );
+    redirect('/');
 }
