@@ -14,6 +14,7 @@ import type * as presence from "../presence.js";
 import type * as push from "../push.js";
 import type * as rooms from "../rooms.js";
 import type * as signals from "../signals.js";
+import type * as watchparty from "../watchparty.js";
 
 import type {
   ApiFromModules,
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   push: typeof push;
   rooms: typeof rooms;
   signals: typeof signals;
+  watchparty: typeof watchparty;
 }>;
 
 /**

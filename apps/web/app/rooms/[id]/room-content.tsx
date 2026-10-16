@@ -10,7 +10,7 @@
  * where the P2P mesh will plug in; everything else (presence, chat)
  * already works on Convex.
  */
-import { useState, useMemo, memo } from 'react';
+import { useState, useMemo, memo, useCallback } from 'react';
 import Link from 'next/link';
 import { useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
@@ -41,6 +41,12 @@ import { VoiceProvider } from '@/lib/services/p2p';
 import { VoicePanel, type PresenceParticipant } from './voice-panel';
 import { ParticipantMenu } from '@/components/room/participant-menu';
 import { RoomSettings } from '@/components/room/room-settings';
+import {
+    WatchPartyProvider,
+    WatchPartyHeaderButton,
+    WatchPartyStartModal,
+    WatchPartyOverlay,
+} from '@/components/room/watch-party';
 import { getBlockedDevices } from '@/lib/blocked';
 import { Hand, Smile, Reply } from '@/components/ui/icons';
 
@@ -53,6 +59,7 @@ const DEFAULT_MEDIA_STATE: RoomMediaState = {
     handRaised: false,
     videoOn: false,
     sharingScreen: false,
+    watchReady: false,
 };
 
 export function RoomContent({ roomId }: RoomContentProps) {
@@ -62,6 +69,18 @@ export function RoomContent({ roomId }: RoomContentProps) {
     // Live media state (mic/camera/screen) flows up from the VoicePanel
     // into the presence heartbeat.
     const [mediaState, setMediaState] = useState<RoomMediaState>(DEFAULT_MEDIA_STATE);
+
+    // Merge, don't replace: VoicePanel reports mic/camera/screen while the
+    // Watch Party reports watchReady independently — neither may clobber
+    // the other on the way to the heartbeat.
+    const handleMediaStateChange = useCallback((s: RoomMediaState) => {
+        setMediaState((prev) => ({ ...prev, ...s }));
+    }, []);
+    const handleWatchReadyChange = useCallback((ready: boolean) => {
+        setMediaState((prev) =>
+            prev.watchReady === ready ? prev : { ...prev, watchReady: ready }
+        );
+    }, []);
 
     // Presence + chat via Convex (joins automatically on mount).
     const { participants, messages, deviceId, joinError, wasRemoved } = useConvexRoom(roomId, mediaState);
@@ -85,6 +104,10 @@ export function RoomContent({ roomId }: RoomContentProps) {
         [participantList, deviceId]
     );
     const iAmOwner = myParticipant?.isOwner === true;
+    const ownerIsLive = useMemo(
+        () => participantList.some((p) => p.isOwner),
+        [participantList]
+    );
     // Hide chat from devices this user blocked (personal block list).
     const blockedDevices = useMemo(() => new Set(getBlockedDevices()), [messages]);
     const messageList = useMemo(
@@ -150,6 +173,13 @@ export function RoomContent({ roomId }: RoomContentProps) {
 
     return (
         <VoiceProvider>
+        <WatchPartyProvider
+            roomId={roomId}
+            deviceId={deviceId}
+            iAmOwner={iAmOwner}
+            ownerIsLive={ownerIsLive}
+            onWatchReadyChange={handleWatchReadyChange}
+        >
         <div className="flex flex-col h-screen bg-background-primary">
             {/* Header */}
             <header className="flex items-center justify-between px-4 py-3 border-b border-surface-border bg-background-secondary/50">
@@ -178,6 +208,7 @@ export function RoomContent({ roomId }: RoomContentProps) {
                     </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
+                    <WatchPartyHeaderButton />
                     {iAmOwner && (
                         <RoomSettings
                             roomId={roomId}
@@ -257,7 +288,7 @@ export function RoomContent({ roomId }: RoomContentProps) {
                         roomMode={(room.mode ?? 'voice') as 'voice' | 'stage' | 'private'}
                         participants={participantList}
                         deviceId={deviceId}
-                        onMediaStateChange={setMediaState}
+                        onMediaStateChange={handleMediaStateChange}
                     />
                 </div>
 
@@ -328,6 +359,9 @@ export function RoomContent({ roomId }: RoomContentProps) {
                 </div>
             </div>
         </div>
+        <WatchPartyStartModal />
+        <WatchPartyOverlay />
+        </WatchPartyProvider>
         </VoiceProvider>
     );
 }

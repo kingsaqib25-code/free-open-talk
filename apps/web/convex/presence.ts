@@ -109,6 +109,9 @@ export const heartbeat = mutation({
         handRaised: v.boolean(),
         videoOn: v.boolean(),
         sharingScreen: v.boolean(),
+        // Watch Party (Phase 6): true once the participant picked the
+        // matching local file in "file" mode.
+        watchReady: v.optional(v.boolean()),
       })
     ),
   },

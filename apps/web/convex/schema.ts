@@ -39,6 +39,9 @@ export default defineSchema({
     sharingScreen: v.boolean(),
     lastHeartbeat: v.number(),
     joinedAt: v.number(),
+    // Watch Party (Phase 6): in "file" mode the participant must pick the
+    // same local file on their own device before they can watch in sync.
+    watchReady: v.optional(v.boolean()),
   })
     .index("by_room", ["roomId"])
     .index("by_room_device", ["roomId", "deviceId"]),
@@ -95,6 +98,24 @@ export default defineSchema({
     targetDeviceId: v.string(),
     reason: v.string(),
     createdAt: v.number(),
+  }).index("by_room", ["roomId"]),
+
+  // Watch Party (Phase 6): one live session per room. The host writes
+  // playback state here; every viewer subscribes reactively, so late
+  // joiners snap to the current timestamp. Each viewer streams from their
+  // own device (YouTube directly, or their own copy of the file) — zero
+  // bandwidth cost to us, and no audio echo in the voice mesh.
+  watchParty: defineTable({
+    roomId: v.id("rooms"),
+    kind: v.union(v.literal("youtube"), v.literal("file")),
+    videoId: v.string(), // YouTube video ID; "" in file mode
+    title: v.optional(v.string()),
+    fileName: v.optional(v.string()), // file mode: name hint for matching
+    fileSize: v.optional(v.number()), // file mode: size hint for matching
+    status: v.union(v.literal("playing"), v.literal("paused")),
+    positionSec: v.number(), // playback position at updatedAt
+    updatedAt: v.number(),
+    hostDeviceId: v.string(),
   }).index("by_room", ["roomId"]),
 
   // Web Push subscriptions (PWA). One row per device; endpoint is the

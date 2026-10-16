@@ -79,6 +79,11 @@ import {
     SignalMedium,
     SignalLow,
     SignalZero,
+    // Watch Party icons (Phase 6)
+    Clapperboard,
+    Play,
+    Pause,
+    Minimize2,
     type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/design-system';
@@ -158,6 +163,11 @@ export {
     SignalMedium,
     SignalLow,
     SignalZero,
+    // Watch Party icons (Phase 6)
+    Clapperboard,
+    Play,
+    Pause,
+    Minimize2,
 };
 
 // Icon wrapper component with consistent sizing

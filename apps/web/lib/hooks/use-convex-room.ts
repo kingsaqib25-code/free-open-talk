@@ -17,6 +17,9 @@ export interface RoomMediaState {
   handRaised: boolean;
   videoOn: boolean;
   sharingScreen: boolean;
+  // Watch Party (Phase 6): true once the participant picked the matching
+  // local file in "file" mode. Optional so older call sites keep working.
+  watchReady?: boolean;
 }
 
 export function useConvexRoom(roomId: string, mediaState: RoomMediaState) {
