@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { getDeviceId } from '@/lib/guest';
+import { resolveActivity } from '@/lib/activity';
 
 export interface RoomMediaState {
   muted: boolean;
@@ -59,10 +60,14 @@ export function useConvexRoom(roomId: string, mediaState: RoomMediaState) {
 
     const beat = () => {
       if (cancelled) return;
+      const s = stateRef.current;
       heartbeat({
         roomId: roomId as any,
         deviceId,
-        state: stateRef.current,
+        state: {
+          ...s,
+          activity: resolveActivity(s.sharingScreen, s.muted),
+        },
       }).catch(() => {});
     };
     beat();

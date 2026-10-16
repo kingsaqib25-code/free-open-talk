@@ -16,6 +16,7 @@ import type { Id } from '@/convex/_generated/dataModel';
 import { Check, Loader2, Edit, AlertCircle } from '@/components/ui/icons';
 import { getDeviceId } from '@/lib/guest';
 import { cn } from '@/lib/design-system';
+import { setMyActivity, clearMyActivity } from '@/lib/activity';
 
 const SAVE_DEBOUNCE_MS = 800;
 const MAX_CHARS = 5000;
@@ -89,6 +90,12 @@ export function RoomNotepad({ roomId }: { roomId: string }) {
 
   const charsLeft = MAX_CHARS - text.length;
   const isLoading = doc === undefined;
+
+  // Activity presence: notepad open → 'notes', closed → clear.
+  useEffect(() => {
+    setMyActivity('notes', undefined, 'notes');
+    return () => clearMyActivity('notes');
+  }, []);
 
   return (
     <div className="flex h-full min-h-[280px] flex-col gap-2">

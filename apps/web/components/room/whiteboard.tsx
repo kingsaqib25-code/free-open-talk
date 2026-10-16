@@ -15,6 +15,7 @@ import { api } from '@/convex/_generated/api';
 import type { Id } from '@/convex/_generated/dataModel';
 import { Trash2, Check, AlertCircle } from '@/components/ui/icons';
 import { cn } from '@/lib/design-system';
+import { setMyActivity, clearMyActivity } from '@/lib/activity';
 
 interface Point {
   x: number;
@@ -63,6 +64,12 @@ export function Whiteboard({
   const [brushWidth, setBrushWidth] = useState(BRUSH_WIDTHS[1]);
   const [clearing, setClearing] = useState(false);
   const [clearError, setClearError] = useState<string | null>(null);
+
+  // Activity presence: whiteboard open → 'whiteboard', closed → clear.
+  useEffect(() => {
+    setMyActivity('whiteboard', undefined, 'whiteboard');
+    return () => clearMyActivity('whiteboard');
+  }, []);
 
   const drawStroke = useCallback(
     (

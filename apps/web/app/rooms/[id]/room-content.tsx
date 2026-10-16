@@ -60,6 +60,7 @@ import { PlatformEmbed } from '@/components/room/platform-embed';
 import { Whiteboard } from '@/components/room/whiteboard';
 import { TicTacToe } from '@/components/room/tictactoe';
 import { RoomNotepad } from '@/components/room/room-notepad';
+import { WatchActivityReporter } from '@/components/room/activity-reporter';
 import { getBlockedDevices } from '@/lib/blocked';
 import { Hand, Smile, Reply } from '@/components/ui/icons';
 
@@ -383,6 +384,7 @@ export function RoomContent({ roomId }: RoomContentProps) {
         <WatchPartyStartModal />
         <WatchPartyOverlay />
         <ScreenSharePreviewModal />
+        <WatchActivityReporter roomId={roomId} />
         <AppsPanel
             roomId={roomId}
             deviceId={deviceId}
@@ -401,7 +403,9 @@ export function RoomContent({ roomId }: RoomContentProps) {
             open={toolsOpen}
             onClose={() => setToolsOpen(false)}
         />
-        <PlatformEmbed roomId={roomId} deviceId={deviceId} />
+        <div id="fot-shared-media">
+            <PlatformEmbed roomId={roomId} deviceId={deviceId} />
+        </div>
         <RoomReactions
             roomId={roomId}
             deviceId={deviceId}

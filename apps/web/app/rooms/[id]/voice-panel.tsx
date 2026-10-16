@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/icons';
 import { useVoice, type RemoteParticipant } from '@/lib/services/p2p';
 import type { RoomMediaState } from '@/lib/hooks/use-convex-room';
+import { setSpeakingFlag } from '@/lib/activity';
 import { ParticipantMenu } from '@/components/room/participant-menu';
 import TierBadge from '@/components/engagement/TierBadge';
 import { useStreak } from '@/components/engagement/useStreak';
@@ -191,7 +192,10 @@ function RemoteTile({
     );
 
     return (
-        <div className={cn(fill ? 'absolute inset-0' : 'relative', !fill && screenStream && 'col-span-full')}>
+        <div
+            id={`fot-tile-${participant.deviceId}`}
+            className={cn(fill ? 'absolute inset-0' : 'relative', !fill && screenStream && 'col-span-full')}
+        >
             <ParticipantMenu
                 roomId={roomId}
                 deviceId={myDeviceId}
@@ -323,7 +327,9 @@ export function VoicePanel({ roomId, roomMode, participants, deviceId, onMediaSt
             videoOn: isVideoOn,
             sharingScreen: isSharingScreen,
         });
-    }, [isConnected, isMuted, handRaised, isVideoOn, isSharingScreen, onMediaStateChange]);
+        // Local speaking flag → activity presence ('talking' vs 'idle').
+        setSpeakingFlag(isSpeaking);
+    }, [isConnected, isMuted, handRaised, isVideoOn, isSharingScreen, isSpeaking, onMediaStateChange]);
 
     // Stage mode: follow Convex role changes (promote/demote by the host).
     useEffect(() => {

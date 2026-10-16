@@ -14,6 +14,7 @@ import { api } from '@/convex/_generated/api';
 import type { Id } from '@/convex/_generated/dataModel';
 import { RefreshCw, Users, AlertCircle, Loader2 } from '@/components/ui/icons';
 import { cn } from '@/lib/design-system';
+import { setMyActivity, clearMyActivity } from '@/lib/activity';
 
 type Mark = 'X' | 'O';
 type Seat = Mark | null;
@@ -92,6 +93,17 @@ export function TicTacToe({
   const gameOver = winner !== '';
   const myTurn =
     !gameOver && game && mySeat !== null && game.turn === mySeat;
+
+  // Activity presence: live game as a player → 'gaming'. Spectators,
+  // finished games, and unmounts clear it.
+  useEffect(() => {
+    if (mySeat !== null && !gameOver) {
+      setMyActivity('gaming', undefined, 'game');
+    } else {
+      clearMyActivity('game');
+    }
+    return () => clearMyActivity('game');
+  }, [mySeat, gameOver]);
 
   const canReset =
     mySeat !== null || room?.ownerDeviceId === deviceId;
