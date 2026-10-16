@@ -565,10 +565,19 @@ export function WatchPartyOverlay() {
     }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-6">
-            <Card className="w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden p-0">
+        /* Mobile: top-docked full-width sheet (YouTube-app style player).
+           Desktop: centered modal as before. Tap below the sheet to minimize. */
+        <div className="fixed inset-0 z-50 flex flex-col sm:items-center sm:justify-center bg-black/95 sm:bg-black/80 sm:p-6">
+            <Card className="w-full sm:max-w-4xl sm:max-h-[92vh] flex flex-col overflow-hidden p-0 rounded-none sm:rounded-2xl shrink-0 animate-[slideUp_0.25s_ease-out]">
                 <SyncPlayer key={`${session.kind}:${session.videoId}:${session.fileName ?? ''}`} />
             </Card>
+            <button
+                type="button"
+                aria-label="Minimize player"
+                title="Minimize player"
+                onClick={() => setExpanded(false)}
+                className="flex-1 w-full cursor-default sm:hidden"
+            />
         </div>
     );
 }
