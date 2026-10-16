@@ -41,7 +41,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/primitives';
-import { useVoice, useVoiceMute } from '@/lib/services/voice';
+import { useVoice, useVoiceMute } from '@/lib/services/p2p';
 import { useRoomSync, toast, useAuth } from '@/lib/hooks';
 import { api } from '@/lib/api';
 import type { RoomData, RoomParticipant } from './types';
@@ -140,7 +140,7 @@ export const EnhancedVoiceRoom = memo(function EnhancedVoiceRoom({
         }
 
         // For remote participants, get voice state from remoteParticipants (matched by oderId)
-        const remote = remoteParticipants.find(rp => rp.oderId === p.id);
+        const remote = remoteParticipants.find(rp => rp.id === p.id);
         return {
             ...p,
             isMuted: remote ? false : p.isMuted, // If we have a consumer, they're producing audio

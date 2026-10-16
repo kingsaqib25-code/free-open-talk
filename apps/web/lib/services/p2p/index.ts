@@ -1,20 +1,17 @@
 /**
- * Voice Service Module
- * 
- * Provides WebRTC voice communication capabilities using mediasoup.
- * 
- * @example
+ * P2P Voice Service Module
+ *
+ * Browser-to-browser WebRTC voice mesh (replaces the old mediasoup client).
+ * Same public export names as the old `./voice` module so every existing
+ * importer keeps working:
+ *
  * ```ts
- * import { getVoiceService, useVoice } from '@/lib/services/voice';
- * 
- * // In a component
- * const voice = useVoice();
- * await voice.joinRoom(roomId);
+ * import { getVoiceService, useVoice } from '@/lib/services/p2p';
  * ```
  */
 
-// Main service
-export { VoiceService, getVoiceService, resetVoiceService } from './voice-service';
+// Main service (P2P mesh)
+export { P2PVoiceService, VoiceService, getVoiceService, resetVoiceService, initialVoiceState } from './mesh';
 
 // Supporting classes
 export { MediaDevicesManager, getMediaDevicesManager } from './media-devices';
@@ -34,6 +31,7 @@ export {
     useOnSpeaking,
     useLocalSpeaking,
 } from './hooks';
+export type { UseVoiceReturn } from './hooks';
 
 // Types
 export type {
@@ -42,8 +40,8 @@ export type {
     VoiceState,
     VoiceConnectionState,
     RemoteParticipant,
-    TransportParams,
-    ConsumerParams,
+    SignalOutbound,
+    InboundSignal,
     AudioLevelData,
     AudioDeviceOptions,
 } from './types';

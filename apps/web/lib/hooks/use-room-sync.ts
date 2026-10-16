@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSocket } from '@/lib/socket';
-import { useVoice } from '@/lib/services/voice';
+import { useVoice } from '@/lib/services/p2p';
 import { toast } from './use-toast';
 import type { RoomParticipant } from '@/components/room/types';
 
@@ -341,7 +341,7 @@ export function useRoomSync({
     const participantsWithVoice = state.participants.map(p => {
         const isCurrentUser = p.id === currentUserId;
         // Match by oderId (user ID) not by id (consumer ID)
-        const remoteParticipant = remoteParticipants.find(rp => rp.oderId === p.id);
+        const remoteParticipant = remoteParticipants.find(rp => rp.id === p.id);
 
         return {
             ...p,

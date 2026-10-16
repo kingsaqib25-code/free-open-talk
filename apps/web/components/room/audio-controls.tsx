@@ -20,7 +20,7 @@ import {
     VolumeX,
     Loader2,
 } from '@/components/ui/icons';
-import { useVoiceMute, useVoiceConnection } from '@/lib/services/voice';
+import { useVoiceMute, useVoiceConnection } from '@/lib/services/p2p';
 
 export interface AudioControlsProps {
     /** Callback when leave is clicked */

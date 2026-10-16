@@ -16,7 +16,7 @@ import {
     useVoice,
     useVoiceConnection,
     useVoiceMute
-} from '@/lib/services/voice';
+} from '@/lib/services/p2p';
 import { RoomHeader } from './room-header';
 import { ParticipantsGrid } from './participants-grid';
 import { AudioControls } from './audio-controls';

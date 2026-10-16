@@ -3,4 +3,4 @@ export { authService } from './auth.service';
 export type { AuthResponse, RefreshResponse, MeResponse } from './auth.service';
 
 // Voice Service
-export * from './voice';
+export * from './p2p';

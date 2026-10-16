@@ -12,9 +12,9 @@ import { cn } from '@/lib/design-system';
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui';
 // import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Mic, Check, Loader2 } from '@/components/ui/icons';
-import { useAudioDevices } from '@/lib/services/voice';
-import { AudioLevelMonitor } from '@/lib/services/voice/audio-level-monitor';
-import { MediaDevicesManager } from '@/lib/services/voice/media-devices';
+import { useAudioDevices } from '@/lib/services/p2p';
+import { AudioLevelMonitor } from '@/lib/services/p2p/audio-level-monitor';
+import { MediaDevicesManager } from '@/lib/services/p2p/media-devices';
 
 export interface DeviceSelectorProps {
     /** Whether the dialog is open */

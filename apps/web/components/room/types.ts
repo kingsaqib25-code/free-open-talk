@@ -4,7 +4,7 @@
  * Shared types for voice room components.
  */
 
-import type { VoiceConnectionState } from '@/lib/services/voice/types';
+import type { VoiceConnectionState } from '@/lib/services/p2p/types';
 
 export interface RoomData {
     id: string;
