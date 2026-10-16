@@ -12,6 +12,7 @@ import type * as chat from "../chat.js";
 import type * as moderation from "../moderation.js";
 import type * as presence from "../presence.js";
 import type * as push from "../push.js";
+import type * as roomapps from "../roomapps.js";
 import type * as rooms from "../rooms.js";
 import type * as signals from "../signals.js";
 import type * as streaks from "../streaks.js";
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   moderation: typeof moderation;
   presence: typeof presence;
   push: typeof push;
+  roomapps: typeof roomapps;
   rooms: typeof rooms;
   signals: typeof signals;
   streaks: typeof streaks;

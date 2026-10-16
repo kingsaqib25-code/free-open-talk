@@ -154,4 +154,45 @@ export default defineSchema({
     lastStreakHeartbeatAt: v.optional(v.number()), // ms — cursor for gap-based accrual
     lastStreakWriteAt: v.optional(v.number()), // dayMinutes value at the last write (write-spam guard)
   }).index("by_deviceId", ["deviceId"]),
+
+  // Room Apps (in-room panel: whiteboard, games, shared notepad).
+  // All keyed by guest deviceId — no auth wall, $0 infra.
+
+  // Collaborative whiteboard: one row per drawn stroke. Coordinates are
+  // normalized to 0..1000 so strokes render on any canvas size. The
+  // app keeps the latest 300 strokes per room and deletes older ones.
+  whiteboard: defineTable({
+    roomId: v.id("rooms"),
+    deviceId: v.string(),
+    nickname: v.string(),
+    points: v.array(v.object({ x: v.number(), y: v.number() })),
+    color: v.string(), // hex
+    width: v.number(), // brush width in normalized units
+    createdAt: v.number(),
+  }).index("by_room", ["roomId"]),
+
+  // Tic-tac-toe: one row per room. First joiner is X, second is O,
+  // everyone else spectates live.
+  tictactoe: defineTable({
+    roomId: v.id("rooms"),
+    board: v.array(v.string()), // length 9, each "" | "X" | "O"
+    turn: v.union(v.literal("X"), v.literal("O")),
+    playerX: v.optional(v.string()), // deviceId
+    playerO: v.optional(v.string()), // deviceId
+    winner: v.union(
+      v.literal(""),
+      v.literal("X"),
+      v.literal("O"),
+      v.literal("draw")
+    ),
+    updatedAt: v.number(),
+  }).index("by_room", ["roomId"]),
+
+  // Shared room notepad (vocab lists, notes). Last-write-wins, 5000 chars.
+  notepad: defineTable({
+    roomId: v.id("rooms"),
+    text: v.string(),
+    updatedAt: v.number(),
+    byDeviceId: v.string(),
+  }).index("by_room", ["roomId"]),
 });
