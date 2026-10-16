@@ -44,4 +44,6 @@ export type {
     InboundSignal,
     AudioLevelData,
     AudioDeviceOptions,
+    JoinRoomOptions,
+    TrackMetaPayload,
 } from './types';

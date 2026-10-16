@@ -36,6 +36,7 @@ import {
     type VoiceConnectionState,
     type RemoteParticipant,
     type AudioDeviceOptions,
+    type JoinRoomOptions,
 } from './index';
 
 // ============================================================================
@@ -148,7 +149,7 @@ export function VoiceProvider({ children, debug = false, deviceId: deviceIdProp 
                 const signals = (await pollSignals({
                     roomId: currentRoomId as any,
                     deviceId,
-                })) as Array<{ fromDeviceId: string; type: 'offer' | 'answer' | 'ice'; payload: string }>;
+                })) as Array<{ fromDeviceId: string; type: 'offer' | 'answer' | 'ice' | 'track-meta'; payload: string }>;
                 for (const s of signals) {
                     if (cancelled) return;
                     let payload: unknown = s.payload;
@@ -225,11 +226,22 @@ export interface UseVoiceReturn {
     remoteParticipants: RemoteParticipant[];
     error: Error | null;
 
+    // Video / screen / publishing (Phase 3)
+    isVideoOn: boolean;
+    isSharingScreen: boolean;
+    isPublishing: boolean;
+    localVideoTrack: MediaStreamTrack | null;
+    localScreenTrack: MediaStreamTrack | null;
+
     // Actions
-    joinRoom: (roomId: string) => Promise<{ participants?: string[] }>;
+    joinRoom: (roomId: string, opts?: JoinRoomOptions) => Promise<{ participants?: string[] }>;
     leaveRoom: () => Promise<void>;
     toggleMute: () => Promise<void>;
     setMuted: (muted: boolean) => Promise<void>;
+    setVideoEnabled: (on: boolean) => Promise<void>;
+    startScreenShare: () => Promise<void>;
+    stopScreenShare: () => Promise<void>;
+    setPublishing: (publish: boolean) => Promise<void>;
 
     // Audio devices
     audioDevices: AudioDeviceOptions[];
@@ -260,8 +272,8 @@ export function useVoice(): UseVoiceReturn {
 
     // Actions
     const joinRoom = useCallback(
-        async (roomId: string) => {
-            return await service.joinRoom(roomId);
+        async (roomId: string, opts?: JoinRoomOptions) => {
+            return await service.joinRoom(roomId, opts);
         },
         [service]
     );
@@ -277,6 +289,28 @@ export function useVoice(): UseVoiceReturn {
     const setMuted = useCallback(
         async (muted: boolean) => {
             await service.setMuted(muted);
+        },
+        [service]
+    );
+
+    const setVideoEnabled = useCallback(
+        async (on: boolean) => {
+            await service.setVideoEnabled(on);
+        },
+        [service]
+    );
+
+    const startScreenShare = useCallback(async () => {
+        await service.startScreenShare();
+    }, [service]);
+
+    const stopScreenShare = useCallback(async () => {
+        await service.stopScreenShare();
+    }, [service]);
+
+    const setPublishing = useCallback(
+        async (publish: boolean) => {
+            await service.setPublishing(publish);
         },
         [service]
     );
@@ -306,11 +340,22 @@ export function useVoice(): UseVoiceReturn {
         remoteParticipants,
         error: state.error,
 
+        // Video / screen / publishing
+        isVideoOn: state.isVideoOn,
+        isSharingScreen: state.isSharingScreen,
+        isPublishing: state.isPublishing,
+        localVideoTrack: state.localVideoTrack,
+        localScreenTrack: state.localScreenTrack,
+
         // Actions
         joinRoom,
         leaveRoom,
         toggleMute,
         setMuted,
+        setVideoEnabled,
+        startScreenShare,
+        stopScreenShare,
+        setPublishing,
 
         // Audio devices
         audioDevices,

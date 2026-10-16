@@ -11,7 +11,9 @@ import { v } from "convex/values";
 const signalValidator = v.union(
   v.literal("offer"),
   v.literal("answer"),
-  v.literal("ice")
+  v.literal("ice"),
+  // Track metadata (screen-share announce/withdraw). Small JSON payload.
+  v.literal("track-meta")
 );
 
 export const push = mutation({

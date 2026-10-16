@@ -59,7 +59,10 @@ export default defineSchema({
     type: v.union(
       v.literal("offer"),
       v.literal("answer"),
-      v.literal("ice")
+      v.literal("ice"),
+      // Track metadata: lets peers tell camera tracks apart from screen-share
+      // tracks (e.g. { action: "add", kind: "screen", streamId }).
+      v.literal("track-meta")
     ),
     payload: v.string(), // JSON-stringified RTCSessionDescriptionInit / RTCIceCandidateInit
     createdAt: v.number(),

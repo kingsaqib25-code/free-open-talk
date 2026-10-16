@@ -157,8 +157,77 @@ export const leave = mutation({
   },
 });
 
-/** Cron: drop participants whose heartbeat went stale. */
-export const cleanupStale = mutation({
+/** Max simultaneous publishers in a stage room (owner counts as one). */
+export const MAX_STAGE_PUBLISHERS = 4;
+
+/**
+ * Stage mode: the host promotes/demotes listeners to publisher.
+ * The 4-publisher cap is enforced here, server-side — the UI also shows
+ * the count but never decides it.
+ */
+export const setRole = mutation({
+  args: {
+    roomId: v.id("rooms"),
+    actorDeviceId: v.string(),
+    targetDeviceId: v.string(),
+    role: v.union(v.literal("publisher"), v.literal("listener")),
+  },
+  handler: async (ctx, args) => {
+    const room = await ctx.db.get(args.roomId);
+    if (!room) throw new Error("Room not found.");
+    if (room.mode !== "stage") {
+      throw new Error("Roles can only be changed in stage rooms.");
+    }
+
+    // Only the host may change roles.
+    const actor = await ctx.db
+      .query("participants")
+      .withIndex("by_room_device", (q) =>
+        q.eq("roomId", args.roomId).eq("deviceId", args.actorDeviceId)
+      )
+      .first();
+    const isOwner =
+      actor?.isOwner === true || room.ownerDeviceId === args.actorDeviceId;
+    if (!isOwner) throw new Error("Only the host can change roles.");
+
+    const target = await ctx.db
+      .query("participants")
+      .withIndex("by_room_device", (q) =>
+        q.eq("roomId", args.roomId).eq("deviceId", args.targetDeviceId)
+      )
+      .first();
+    if (!target) throw new Error("Participant is not in this room.");
+    if (target.deviceId === room.ownerDeviceId || target.isOwner) {
+      throw new Error("The host's role cannot be changed.");
+    }
+    if (target.role === args.role) return { ok: true as const };
+
+    if (args.role === "publisher") {
+      const now = Date.now();
+      const live = await ctx.db
+        .query("participants")
+        .withIndex("by_room", (q) => q.eq("roomId", args.roomId))
+        .collect();
+      const publishers = live.filter(
+        (p) =>
+          p.lastHeartbeat > now - HEARTBEAT_TIMEOUT_MS && p.role === "publisher"
+      ).length;
+      if (publishers >= MAX_STAGE_PUBLISHERS) {
+        throw new Error(
+          `Stage is full — max ${MAX_STAGE_PUBLISHERS} publishers at a time.`
+        );
+      }
+    }
+
+    await ctx.db.patch(target._id, {
+      role: args.role,
+      lastHeartbeat: Date.now(),
+    });
+    return { ok: true as const };
+  },
+});
+
+/** Cron: drop participants whose heartbeat went stale. */export const cleanupStale = mutation({
   args: {},
   handler: async (ctx) => {
     const cutoff = Date.now() - HEARTBEAT_TIMEOUT_MS;

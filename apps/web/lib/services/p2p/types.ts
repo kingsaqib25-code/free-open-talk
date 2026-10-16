@@ -20,6 +20,10 @@ export interface RemoteParticipant {
     peerConnection: RTCPeerConnection;
     /** Remote audio track (null until ontrack fires) */
     audioTrack: MediaStreamTrack | null;
+    /** Remote camera video track (null until ontrack fires) */
+    videoTrack: MediaStreamTrack | null;
+    /** Remote screen-share video track (announced via track-meta signal) */
+    screenTrack: MediaStreamTrack | null;
     /** Smoothed volume 0-1 (from AudioLevelMonitor) */
     volume: number;
     /** Speaking detection flag */
@@ -46,6 +50,8 @@ export interface VoiceServiceConfig {
     debug?: boolean;
     /** Audio constraints for getUserMedia */
     audioConstraints?: MediaTrackConstraints;
+    /** Video constraints for getUserMedia (camera) */
+    videoConstraints?: MediaTrackConstraints;
     /** Auto-gain control */
     autoGainControl?: boolean;
     /** Echo cancellation */
@@ -54,6 +60,17 @@ export interface VoiceServiceConfig {
     noiseSuppression?: boolean;
     /** Signal poll interval in ms (default 1500) */
     signalPollIntervalMs?: number;
+}
+
+/**
+ * Options for joinRoom. Listeners (stage audience) join with
+ * publish:false — no mic/camera captured, receive-only peer connections.
+ */
+export interface JoinRoomOptions {
+    /** Capture mic and publish audio (default true) */
+    publish?: boolean;
+    /** Capture camera and publish video alongside audio (default false) */
+    video?: boolean;
 }
 
 /**
@@ -68,6 +85,16 @@ export interface VoiceState {
     localAudioLevel: number; // Audio level for local user (0-1)
     currentRoomId: string | null;
     localAudioTrack: MediaStreamTrack | null;
+    /** Local camera track (null when camera off) */
+    localVideoTrack: MediaStreamTrack | null;
+    /** Local screen-share track (null when not sharing) */
+    localScreenTrack: MediaStreamTrack | null;
+    /** Camera currently published */
+    isVideoOn: boolean;
+    /** Screen currently shared */
+    isSharingScreen: boolean;
+    /** Mic/camera published to the mesh (false = stage audience listener) */
+    isPublishing: boolean;
     remoteParticipants: Map<string, RemoteParticipant>;
     audioInputDevices: MediaDeviceInfo[];
     selectedAudioInputId: string | null;
@@ -80,7 +107,7 @@ export interface VoiceState {
  */
 export type SignalOutbound = (
     toDeviceId: string,
-    type: 'offer' | 'answer' | 'ice',
+    type: 'offer' | 'answer' | 'ice' | 'track-meta',
     payload: unknown
 ) => void;
 
@@ -89,8 +116,19 @@ export type SignalOutbound = (
  */
 export interface InboundSignal {
     fromDeviceId: string;
-    type: 'offer' | 'answer' | 'ice';
+    type: 'offer' | 'answer' | 'ice' | 'track-meta';
     payload: unknown;
+}
+
+/**
+ * Track metadata payload — announces a screen-share stream so receivers
+ * can tell it apart from the camera track. Sent right after addTrack,
+ * and again on stop.
+ */
+export interface TrackMetaPayload {
+    action: 'add' | 'remove';
+    kind: 'screen';
+    streamId: string;
 }
 
 /**
@@ -105,6 +143,9 @@ export interface VoiceServiceEvents {
     'participant-speaking': (deviceId: string, isSpeaking: boolean) => void;
     'local-speaking': (isSpeaking: boolean) => void;
     'mute-changed': (isMuted: boolean) => void;
+    'video-changed': (isVideoOn: boolean) => void;
+    'screen-share-changed': (isSharing: boolean) => void;
+    'publishing-changed': (isPublishing: boolean) => void;
     'error': (error: Error) => void;
     'reconnecting': () => void;
     'reconnected': () => void;

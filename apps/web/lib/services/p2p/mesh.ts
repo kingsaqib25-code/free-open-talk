@@ -29,6 +29,8 @@ import type {
     SignalOutbound,
     InboundSignal,
     AudioDeviceOptions,
+    JoinRoomOptions,
+    TrackMetaPayload,
 } from './types';
 
 const STUN_SERVERS: RTCIceServer[] = [
@@ -51,6 +53,10 @@ interface PeerSlot {
     remoteStream: MediaStream | null;
     /** User-gesture resume queued? */
     resumeQueued: boolean;
+    /** streamId -> 'camera' | 'screen' (screen announces itself via track-meta) */
+    streamKinds: Map<string, 'camera' | 'screen'>;
+    /** track.id -> streamId, for reclassification when track-meta arrives late */
+    trackStreams: Map<string, string>;
 }
 
 const initialState = (): VoiceState => ({    connectionState: 'disconnected',
@@ -61,6 +67,11 @@ const initialState = (): VoiceState => ({    connectionState: 'disconnected',
     localAudioLevel: 0,
     currentRoomId: null,
     localAudioTrack: null,
+    localVideoTrack: null,
+    localScreenTrack: null,
+    isVideoOn: false,
+    isSharingScreen: false,
+    isPublishing: false,
     remoteParticipants: new Map<string, RemoteParticipant>(),
     audioInputDevices: [],
     selectedAudioInputId: null,
@@ -73,11 +84,17 @@ export function initialVoiceState(): VoiceState {
 }
 
 export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
-    private config: Required<Omit<VoiceServiceConfig, 'deviceId' | 'audioConstraints'>> &
-        Pick<VoiceServiceConfig, 'deviceId' | 'audioConstraints'>;
+    private config: Required<Omit<VoiceServiceConfig, 'deviceId' | 'audioConstraints' | 'videoConstraints'>> &
+        Pick<VoiceServiceConfig, 'deviceId' | 'audioConstraints' | 'videoConstraints'>;
     private state: VoiceState = initialState();
     private peers = new Map<string, PeerSlot>();
     private localStream: MediaStream | null = null;
+    /** Camera stream (separate from mic so it can toggle independently). */
+    private cameraStream: MediaStream | null = null;
+    /** Screen-share stream from getDisplayMedia. */
+    private screenStream: MediaStream | null = null;
+    /** Whether the camera should be on whenever we are publishing. */
+    private videoDesired = false;
     private localMonitor: AudioLevelMonitor | null = null;
     private mediaDevices: MediaDevicesManager;
     private signalOut: SignalOutbound | null = null;
@@ -93,6 +110,7 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
             noiseSuppression: config.noiseSuppression ?? true,
             signalPollIntervalMs: config.signalPollIntervalMs ?? 1500,
             audioConstraints: config.audioConstraints,
+            videoConstraints: config.videoConstraints,
         };
         this.mediaDevices = new MediaDevicesManager({
             defaultConstraints: this.buildAudioConstraints(),
@@ -147,10 +165,12 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
     // Room lifecycle
     // ------------------------------------------------------------------
 
-    async joinRoom(roomId: string): Promise<{ participants?: string[] }> {
+    async joinRoom(roomId: string, opts?: JoinRoomOptions): Promise<{ participants?: string[] }> {
         if (this.state.isConnecting || this.state.currentRoomId === roomId) {
             return { participants: [...this.peers.keys()] };
         }
+        const publish = opts?.publish ?? true;
+        this.videoDesired = opts?.video ?? false;
         this.updateState({
             connectionState: 'connecting',
             isConnecting: true,
@@ -159,26 +179,36 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
         });
 
         try {
-            const stream = await this.mediaDevices.getAudioStream();
-            if (this.disposed) {
-                stream.getTracks().forEach((t) => t.stop());
-                return {};
+            let track: MediaStreamTrack | null = null;
+            if (publish) {
+                const stream = await this.mediaDevices.getAudioStream();
+                if (this.disposed) {
+                    stream.getTracks().forEach((t) => t.stop());
+                    return {};
+                }
+                track = stream.getAudioTracks()[0] ?? null;
+                this.localStream = stream;
+                this.startLocalMonitor(track);
+                // Camera alongside the mic when the room wants video.
+                if (this.videoDesired) {
+                    const videoTrack = await this.acquireCamera();
+                    if (!videoTrack) this.videoDesired = false; // audio-only fallback
+                }
             }
-            const track = stream.getAudioTracks()[0] ?? null;
-            this.localStream = stream;
-
-            this.startLocalMonitor(track);
 
             this.updateState({
                 connectionState: 'connected',
                 isConnecting: false,
                 isConnected: true,
+                isPublishing: publish,
                 isMuted: track ? !track.enabled : false,
                 localAudioTrack: track,
+                localVideoTrack: this.cameraStream?.getVideoTracks()[0] ?? null,
+                isVideoOn: !!this.cameraStream,
                 selectedAudioInputId: track?.getSettings().deviceId ?? null,
             });
             this.emit('connection-state-changed', 'connected');
-            this.log('joined room', roomId);
+            this.log('joined room', roomId, publish ? '(publishing)' : '(listen-only)');
             return { participants: [...this.peers.keys()] };
         } catch (err) {
             const error = err instanceof Error ? err : new Error(String(err));
@@ -200,6 +230,15 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
             this.localStream.getTracks().forEach((t) => t.stop());
             this.localStream = null;
         }
+        if (this.cameraStream) {
+            this.cameraStream.getTracks().forEach((t) => t.stop());
+            this.cameraStream = null;
+        }
+        if (this.screenStream) {
+            this.screenStream.getTracks().forEach((t) => t.stop());
+            this.screenStream = null;
+        }
+        this.videoDesired = false;
         const fresh = initialState();
         this.state = { ...fresh, audioInputDevices: this.state.audioInputDevices };
         this.emitState();
@@ -243,14 +282,32 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
             monitor: null,
             remoteStream: null,
             resumeQueued: false,
+            streamKinds: new Map(),
+            trackStreams: new Map(),
         };
         this.peers.set(peerId, slot);
         this.log(`PC created for ${peerId} (polite=${slot.polite})`);
 
-        // Attach our mic track (if we have one yet).
+        // Attach our local tracks (mic, camera, active screen share).
         if (this.localStream) {
             for (const track of this.localStream.getAudioTracks()) {
                 pc.addTrack(track, this.localStream);
+            }
+        }
+        if (this.cameraStream) {
+            for (const track of this.cameraStream.getVideoTracks()) {
+                pc.addTrack(track, this.cameraStream);
+            }
+        }
+        if (this.screenStream) {
+            for (const track of this.screenStream.getVideoTracks()) {
+                pc.addTrack(track, this.screenStream);
+                // Newcomer must know this stream is a screen share, not a camera.
+                this.sendSignal(peerId, 'track-meta', {
+                    action: 'add',
+                    kind: 'screen',
+                    streamId: this.screenStream.id,
+                } satisfies TrackMetaPayload);
             }
         }
 
@@ -322,6 +379,8 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
             id: peerId,
             peerConnection: pc,
             audioTrack: existing?.audioTrack ?? null,
+            videoTrack: existing?.videoTrack ?? null,
+            screenTrack: existing?.screenTrack ?? null,
             volume: existing?.volume ?? 0,
             isSpeaking: existing?.isSpeaking ?? false,
         });
@@ -338,6 +397,8 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
             (patch.volume !== undefined && Math.abs((existing.volume ?? 0) - patch.volume) > 0.02) ||
             (patch.isSpeaking !== undefined && existing.isSpeaking !== patch.isSpeaking) ||
             patch.audioTrack !== undefined ||
+            patch.videoTrack !== undefined ||
+            patch.screenTrack !== undefined ||
             patch.peerConnection !== undefined;
         this.state.remoteParticipants = next;
         if (changed) this.emitState();
@@ -349,6 +410,11 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
 
     async handleSignal(fromDeviceId: string, type: InboundSignal['type'], payload: unknown): Promise<void> {
         if (fromDeviceId === this.config.deviceId || this.disposed) return;
+        // Track metadata doesn't need a peer connection — route it first.
+        if (type === 'track-meta') {
+            this.handleTrackMeta(fromDeviceId, payload);
+            return;
+        }
         let slot = this.peers.get(fromDeviceId);
         if (!slot) {
             // Signal from an unknown peer — create the PC so we can answer.
@@ -422,6 +488,10 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
     // ------------------------------------------------------------------
 
     private handleRemoteTrack(peerId: string, e: RTCTrackEvent): void {
+        if (e.track.kind === 'video') {
+            this.handleRemoteVideoTrack(peerId, e);
+            return;
+        }
         const slot = this.peers.get(peerId);
         if (!slot) return;
         const stream = e.streams[0] ?? new MediaStream([e.track]);
@@ -452,6 +522,69 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
         );
         slot.monitor = monitor;
         void monitor.start(audioTrack).catch((err) => this.log('remote monitor failed', err));
+    }
+
+    /**
+     * Route an incoming remote video track to camera vs screen-share.
+     * Screen shares announce themselves via the 'track-meta' signal; a video
+     * track with no announcement is the camera (announcements can arrive
+     * after ontrack, so late metadata reclassifies — see handleTrackMeta).
+     */
+    private handleRemoteVideoTrack(peerId: string, e: RTCTrackEvent): void {
+        const slot = this.peers.get(peerId);
+        if (!slot) return;
+        const track = e.track;
+        const streamId = e.streams[0]?.id ?? '';
+        if (track.id) slot.trackStreams.set(track.id, streamId);
+        const kind = streamId ? slot.streamKinds.get(streamId) : undefined;
+        if (kind === 'screen') {
+            this.patchParticipant(peerId, { screenTrack: track });
+        } else {
+            this.patchParticipant(peerId, { videoTrack: track });
+        }
+        track.onended = () => this.clearRemoteVideoTrack(peerId, track);
+        this.log(`remote video (${kind ?? 'camera?'}) from ${peerId}`);
+    }
+
+    private clearRemoteVideoTrack(peerId: string, track: MediaStreamTrack): void {
+        const cur = this.state.remoteParticipants.get(peerId);
+        if (!cur) return;
+        if (cur.videoTrack === track) this.patchParticipant(peerId, { videoTrack: null });
+        if (cur.screenTrack === track) this.patchParticipant(peerId, { screenTrack: null });
+    }
+
+    /**
+     * Handle screen-share announcements from a peer.
+     * { action: 'add' } marks the streamId as a screen share (reclassifying
+     * any already-received video track from that stream); { action: 'remove' }
+     * clears the remote screen tile.
+     */
+    private handleTrackMeta(fromDeviceId: string, payload: unknown): void {
+        const meta = payload as TrackMetaPayload;
+        const slot = this.peers.get(fromDeviceId);
+        if (!slot || !meta || typeof meta.streamId !== 'string') return;
+        if (meta.action === 'add' && meta.kind === 'screen') {
+            slot.streamKinds.set(meta.streamId, 'screen');
+            const cur = this.state.remoteParticipants.get(fromDeviceId);
+            if (cur?.videoTrack) {
+                const sid = slot.trackStreams.get(cur.videoTrack.id);
+                if (sid === meta.streamId) {
+                    this.patchParticipant(fromDeviceId, {
+                        videoTrack: null,
+                        screenTrack: cur.videoTrack,
+                    });
+                }
+            }
+        } else if (meta.action === 'remove') {
+            slot.streamKinds.delete(meta.streamId);
+            const cur = this.state.remoteParticipants.get(fromDeviceId);
+            if (cur?.screenTrack) {
+                const sid = slot.trackStreams.get(cur.screenTrack.id);
+                if (!sid || sid === meta.streamId) {
+                    this.patchParticipant(fromDeviceId, { screenTrack: null });
+                }
+            }
+        }
     }
 
     private playRemoteAudio(peerId: string): void {
@@ -527,6 +660,264 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
         }
         this.startLocalMonitor(newTrack);
         this.updateState({ localAudioTrack: newTrack, selectedAudioInputId: deviceId });
+    }
+
+    // ------------------------------------------------------------------
+    // Local video, screen share, publishing (stage mode)
+    // ------------------------------------------------------------------
+
+    /** Acquire the camera. Returns the video track, or null on failure. */
+    private async acquireCamera(): Promise<MediaStreamTrack | null> {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: 'user',
+                    ...(this.config.videoConstraints ?? {}),
+                },
+                audio: false,
+            });
+            const track = stream.getVideoTracks()[0] ?? null;
+            if (!track) {
+                stream.getTracks().forEach((t) => t.stop());
+                return null;
+            }
+            if (this.cameraStream) {
+                this.cameraStream.getTracks().forEach((t) => t.stop());
+            }
+            this.cameraStream = stream;
+            return track;
+        } catch (err) {
+            this.log('camera acquisition failed', err);
+            return null;
+        }
+    }
+
+    /** Ask every peer for fresh SDP (used after addTrack/removeTrack). */
+    private renegotiate(peerId: string): void {
+        const slot = this.peers.get(peerId);
+        if (!slot || this.disposed) return;
+        // onnegotiationneeded fires async and covers the non-stable case;
+        // this explicit kick handles the common stable case immediately.
+        if (slot.pc.signalingState === 'stable') {
+            void this.createAndSendOffer(peerId);
+        }
+    }
+
+    /**
+     * Toggle camera publish. Safe to call before joining (marks intent) —
+     * the track attaches on the next publish/join.
+     */
+    async setVideoEnabled(on: boolean): Promise<void> {
+        if (on === this.state.isVideoOn || this.disposed) return;
+        this.videoDesired = on;
+        if (!on) {
+            const track = this.state.localVideoTrack;
+            for (const [peerId, slot] of this.peers) {
+                const sender = slot.pc
+                    .getSenders()
+                    .find((s) => s.track === track);
+                if (sender) {
+                    try {
+                        slot.pc.removeTrack(sender);
+                    } catch { /* ignore */ }
+                    this.renegotiate(peerId);
+                }
+            }
+            track?.stop();
+            if (this.cameraStream) {
+                this.cameraStream.getTracks().forEach((t) => t.stop());
+                this.cameraStream = null;
+            }
+            this.updateState({ localVideoTrack: null, isVideoOn: false });
+            this.emit('video-changed', false);
+            return;
+        }
+        if (!this.state.isConnected || !this.state.isPublishing) {
+            // Not in a position to publish yet; intent is stored in videoDesired.
+            this.log('video desired; will attach on publish');
+            return;
+        }
+        const track = await this.acquireCamera();
+        if (!track || this.disposed) return;
+        for (const [peerId, slot] of this.peers) {
+            try {
+                slot.pc.addTrack(track, this.cameraStream!);
+            } catch (err) {
+                this.log(`addTrack(camera) failed for ${peerId}`, err);
+                continue;
+            }
+            this.renegotiate(peerId);
+        }
+        this.updateState({ localVideoTrack: track, isVideoOn: true });
+        this.emit('video-changed', true);
+    }
+
+    /**
+     * Share screen / window / tab. Must be called from a user gesture
+     * (button click) or the browser may block the picker.
+     */
+    async startScreenShare(): Promise<void> {
+        if (this.state.isSharingScreen || this.disposed) return;
+        if (!this.state.isConnected || !this.state.isPublishing) {
+            throw new Error('Join as a publisher before sharing your screen.');
+        }
+        let stream: MediaStream;
+        try {
+            stream = await navigator.mediaDevices.getDisplayMedia({
+                video: true,
+                audio: false,
+            });
+        } catch (err) {
+            // User cancelled the picker — not an error worth surfacing.
+            if (err instanceof DOMException && err.name === 'NotAllowedError') {
+                this.log('screen share picker cancelled');
+                return;
+            }
+            throw err;
+        }
+        const track = stream.getVideoTracks()[0];
+        if (!track) {
+            stream.getTracks().forEach((t) => t.stop());
+            throw new Error('Screen share produced no video track.');
+        }
+        this.screenStream = stream;
+        const meta: TrackMetaPayload = {
+            action: 'add',
+            kind: 'screen',
+            streamId: stream.id,
+        };
+        for (const [peerId, slot] of this.peers) {
+            try {
+                slot.pc.addTrack(track, stream);
+            } catch (err) {
+                this.log(`addTrack(screen) failed for ${peerId}`, err);
+                continue;
+            }
+            this.sendSignal(peerId, 'track-meta', meta);
+            this.renegotiate(peerId);
+        }
+        // Browser "Stop sharing" button → clean up like a manual stop.
+        track.onended = () => {
+            void this.stopScreenShare().catch(() => {});
+        };
+        this.updateState({ localScreenTrack: track, isSharingScreen: true });
+        this.emit('screen-share-changed', true);
+        this.log('screen share started');
+    }
+
+    async stopScreenShare(): Promise<void> {
+        const track = this.state.localScreenTrack;
+        const stream = this.screenStream;
+        if (!track && !stream) return;
+        const meta: TrackMetaPayload = {
+            action: 'remove',
+            kind: 'screen',
+            streamId: stream?.id ?? '',
+        };
+        for (const [peerId, slot] of this.peers) {
+            const sender = slot.pc.getSenders().find((s) => s.track === track);
+            if (sender) {
+                try {
+                    slot.pc.removeTrack(sender);
+                } catch { /* ignore */ }
+                this.sendSignal(peerId, 'track-meta', meta);
+                this.renegotiate(peerId);
+            }
+        }
+        track?.stop();
+        this.screenStream = null;
+        // Only flip state if we were actually sharing (onended can race).
+        if (this.state.isSharingScreen) {
+            this.updateState({ localScreenTrack: null, isSharingScreen: false });
+            this.emit('screen-share-changed', false);
+        }
+        this.log('screen share stopped');
+    }
+
+    /**
+     * Stage mode: flip between publisher (mic/camera live) and listener
+     * (receive-only, no local capture). Idempotent — the React layer calls
+     * this whenever the Convex role changes.
+     */
+    async setPublishing(publish: boolean): Promise<void> {
+        if (this.disposed || publish === this.state.isPublishing) return;
+        if (!this.state.isConnected) {
+            this.updateState({ isPublishing: publish });
+            this.emit('publishing-changed', publish);
+            return;
+        }
+        if (publish) {
+            try {
+                const stream = await this.mediaDevices.getAudioStream();
+                const audioTrack = stream.getAudioTracks()[0] ?? null;
+                this.localStream = stream;
+                if (audioTrack) {
+                    for (const [peerId, slot] of this.peers) {
+                        try {
+                            slot.pc.addTrack(audioTrack, stream);
+                        } catch (err) {
+                            this.log(`addTrack(audio) failed for ${peerId}`, err);
+                            continue;
+                        }
+                        this.renegotiate(peerId);
+                    }
+                }
+                this.startLocalMonitor(audioTrack);
+                this.updateState({
+                    isPublishing: true,
+                    isMuted: audioTrack ? !audioTrack.enabled : false,
+                    localAudioTrack: audioTrack,
+                    selectedAudioInputId:
+                        audioTrack?.getSettings().deviceId ?? null,
+                });
+                if (this.videoDesired) {
+                    await this.setVideoEnabled(true).catch((err) =>
+                        this.log('camera re-attach failed', err)
+                    );
+                }
+                this.emit('publishing-changed', true);
+                this.log('now publishing');
+            } catch (err) {
+                const error = err instanceof Error ? err : new Error(String(err));
+                this.updateState({ error });
+                this.emit('error', error);
+                throw error;
+            }
+            return;
+        }
+        // Demote to listener: stop everything we publish.
+        await this.stopScreenShare().catch(() => {});
+        if (this.state.isVideoOn) {
+            await this.setVideoEnabled(false).catch(() => {});
+        }
+        for (const [peerId, slot] of this.peers) {
+            let changed = false;
+            for (const sender of slot.pc.getSenders()) {
+                if (sender.track) {
+                    try {
+                        slot.pc.removeTrack(sender);
+                    } catch { /* ignore */ }
+                    changed = true;
+                }
+            }
+            if (changed) this.renegotiate(peerId);
+        }
+        this.stopLocalMonitor();
+        if (this.localStream) {
+            this.localStream.getTracks().forEach((t) => t.stop());
+            this.localStream = null;
+        }
+        this.updateState({
+            isPublishing: false,
+            localAudioTrack: null,
+            localAudioLevel: 0,
+            isSpeaking: false,
+            isMuted: false,
+        });
+        this.emit('publishing-changed', false);
+        this.log('now listen-only');
     }
 
     private startLocalMonitor(track: MediaStreamTrack | null): void {
