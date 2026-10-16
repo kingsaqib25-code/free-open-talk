@@ -132,3 +132,24 @@ export const cleanupEmpty = mutation({
 });
 
 export { HEARTBEAT_TIMEOUT_MS };
+
+/** Owner sets the room's welcome message (shown warm-style on join). */
+export const setWelcomeMessage = mutation({
+  args: {
+    roomId: v.id("rooms"),
+    deviceId: v.string(),
+    message: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const room = await ctx.db.get(args.roomId);
+    if (!room) throw new Error("Room not found.");
+    if (room.ownerDeviceId !== args.deviceId) {
+      throw new Error("Only the host can set the welcome message.");
+    }
+    await ctx.db.patch(args.roomId, {
+      welcomeMessage: args.message.slice(0, 500),
+      lastActivityAt: Date.now(),
+    });
+    return { ok: true as const };
+  },
+});

@@ -23,6 +23,7 @@ export default defineSchema({
     maxParticipants: v.number(),
     participantCount: v.number(),
     lastActivityAt: v.number(),
+    welcomeMessage: v.optional(v.string()),
   })
     .index("by_language", ["language"])
     .index("by_activity", ["lastActivityAt"]),
