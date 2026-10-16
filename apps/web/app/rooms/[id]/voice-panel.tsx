@@ -87,7 +87,8 @@ function useTrackStream(track: MediaStreamTrack | null): MediaStream | null {
     return useMemo(() => (track ? new MediaStream([track]) : null), [track]);
 }
 
-/** Remote participant tile: video / screen-share / avatar, memoized streams. */
+/** Remote participant tile: video / screen-share / avatar, memoized streams.
+ *  `fill` renders it edge-to-edge inside a relative hero container (1-on-1). */
 function RemoteTile({
     participant,
     mesh,
@@ -99,6 +100,7 @@ function RemoteTile({
     acting,
     onRoleChange,
     onAction,
+    fill,
 }: {
     participant: PresenceParticipant;
     mesh: RemoteParticipant | undefined;
@@ -110,6 +112,7 @@ function RemoteTile({
     acting: boolean;
     onRoleChange: (deviceId: string, role: 'publisher' | 'listener') => void;
     onAction: (msg: string) => void;
+    fill?: boolean;
 }) {
     const videoStream = useTrackStream(mesh?.videoTrack ?? null);
     const screenStream = useTrackStream(mesh?.screenTrack ?? null);
@@ -117,34 +120,35 @@ function RemoteTile({
     const label = (extra?: string) =>
         extra ? `${participant.nickname} · ${extra}` : participant.nickname;
 
+    const tileClass = fill ? 'w-full h-full' : 'aspect-video min-h-[220px] md:min-h-[280px]';
     const visual = screenStream ? (
         <VideoTile
             stream={screenStream}
             label={label('sharing screen')}
-            className="aspect-video"
+            className={tileClass}
         />
     ) : videoStream ? (
         <VideoTile
             stream={videoStream}
             label={label(speaking ? 'speaking' : undefined)}
-            className="aspect-video"
+            className={tileClass}
         />
     ) : (
-        <div className="aspect-video rounded-xl bg-surface-default flex flex-col items-center justify-center gap-1.5 relative cursor-pointer hover:ring-1 hover:ring-surface-border transition-shadow">
-            <Avatar alt={participant.nickname} fallback={participant.nickname} size="md" />
-            <span className="text-xs text-text-secondary max-w-[90%] truncate">
+        <div className={cn(tileClass, 'rounded-xl bg-surface-default flex flex-col items-center justify-center gap-1.5 relative cursor-pointer hover:ring-1 hover:ring-surface-border transition-shadow')}>
+            <Avatar alt={participant.nickname} fallback={participant.nickname} size={fill ? '3xl' : 'md'} />
+            <span className={cn('text-text-secondary max-w-[90%] truncate', fill ? 'text-base' : 'text-xs')}>
                 {participant.nickname}
                 {participant.isOwner && ' · host'}
                 {participant.role === 'publisher' && roomMode === 'stage' && ' · on stage'}
             </span>
             {speaking && (
-                <span className="absolute inset-0 rounded-xl ring-2 ring-primary-400 pointer-events-none" />
+                <span className="absolute inset-0 rounded-xl ring-2 ring-voice-speaking shadow-glow pointer-events-none" />
             )}
         </div>
     );
 
     return (
-        <div className={cn('relative', screenStream && 'col-span-2')}>
+        <div className={cn(fill ? 'absolute inset-0' : 'relative', !fill && screenStream && 'col-span-full')}>
             <ParticipantMenu
                 roomId={roomId}
                 deviceId={myDeviceId}
@@ -154,7 +158,7 @@ function RemoteTile({
                 iAmOwner={iAmOwner}
                 onAction={onAction}
             >
-                <div>{visual}</div>
+                <div className={fill ? 'w-full h-full' : undefined}>{visual}</div>
             </ParticipantMenu>
             {/* Raised-hand badge */}
             {participant.handRaised && (
@@ -165,7 +169,7 @@ function RemoteTile({
                     <Hand className="h-4 w-4" />
                 </span>
             )}
-            {showAdmin && (
+            {showAdmin && !fill && (
                 <div className="mt-1.5 flex justify-center">
                     {participant.role === 'listener' ? (
                         <Button
@@ -317,6 +321,34 @@ export function VoicePanel({ roomId, roomMode, participants, deviceId, onMediaSt
     const tileLabel = (nickname: string, extra?: string) =>
         extra ? `${nickname} · ${extra}` : nickname;
 
+    const others = participants.filter((p) => p.deviceId !== deviceId);
+    // 1-on-1 video call: remote fills the stage, self floats as PiP.
+    const isOneOnOne = roomMode === 'private' && others.length >= 1;
+    const heroPeer = isOneOnOne ? others[0] : undefined;
+
+    const selfTile = (pip: boolean) =>
+        localVideoStream ? (
+            <VideoTile
+                stream={localVideoStream}
+                muted
+                label={tileLabel('You', isSpeaking ? 'speaking' : isMuted ? 'muted' : undefined)}
+                className={pip ? 'w-full h-full' : 'aspect-video min-h-[220px] md:min-h-[280px]'}
+            />
+        ) : (
+            <div className={cn(
+                'rounded-xl bg-surface-default flex flex-col items-center justify-center gap-1.5 relative overflow-hidden',
+                pip ? 'w-full h-full' : 'aspect-video min-h-[220px] md:min-h-[280px]'
+            )}>
+                <Avatar alt="You" fallback="You" size={pip ? 'lg' : 'md'} />
+                <span className={cn('text-text-secondary', pip ? 'text-[11px]' : 'text-xs')}>
+                    You {isSpeaking ? '· speaking' : isMuted ? '· muted' : ''}
+                </span>
+                {isSpeaking && (
+                    <span className="absolute inset-0 rounded-xl ring-2 ring-voice-speaking shadow-glow pointer-events-none" />
+                )}
+            </div>
+        );
+
     return (
         <Card variant="gradient">
             {!isConnected ? (
@@ -356,33 +388,37 @@ export function VoicePanel({ roomId, roomMode, participants, deviceId, onMediaSt
                 </div>
             ) : (
                 <div className="p-4">
-                    {/* Tiles */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                    {/* Tiles — 1-on-1 hero for private video calls */}
+                    {isOneOnOne && heroPeer ? (
+                        <div className="relative min-h-[55vh] md:min-h-[68vh] rounded-2xl overflow-hidden bg-surface-default mb-4 ring-1 ring-surface-border">
+                            <RemoteTile
+                                key={heroPeer.deviceId}
+                                participant={heroPeer}
+                                mesh={remoteById.get(heroPeer.deviceId)}
+                                roomMode={roomMode}
+                                roomId={roomId}
+                                myDeviceId={deviceId}
+                                iAmOwner={iAmOwner}
+                                showAdmin={false}
+                                acting={acting}
+                                onRoleChange={handleRoleChange}
+                                onAction={(msg) => setJoinError(msg)}
+                                fill
+                            />
+                            {/* Self PiP */}
+                            <div className="absolute bottom-3 right-3 z-10 w-28 md:w-44 aspect-video rounded-xl overflow-hidden ring-1 ring-surface-border shadow-xl bg-surface-default">
+                                {selfTile(true)}
+                            </div>
+                        </div>
+                    ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4 auto-rows-fr">
                         {/* Self tile */}
                         <div>
-                            {localVideoStream ? (
-                                <VideoTile
-                                    stream={localVideoStream}
-                                    muted
-                                    label={tileLabel('You', isSpeaking ? 'speaking' : isMuted ? 'muted' : undefined)}
-                                    className="aspect-video"
-                                />
-                            ) : (
-                                <div className="aspect-video rounded-xl bg-surface-default flex flex-col items-center justify-center gap-1.5 relative">
-                                    <Avatar alt="You" fallback="You" size="md" />
-                                    <span className="text-xs text-text-secondary">
-                                        You {isSpeaking ? '· speaking' : isMuted ? '· muted' : ''}
-                                    </span>
-                                    {isSpeaking && (
-                                        <span className="absolute inset-0 rounded-xl ring-2 ring-primary-400 pointer-events-none" />
-                                    )}
-                                </div>
-                            )}
+                            {selfTile(false)}
                         </div>
 
                         {/* Remote tiles */}
-                        {participants
-                            .filter((p) => p.deviceId !== deviceId)
+                        {others
                             .map((p) => (
                                 <RemoteTile
                                     key={p.deviceId}
@@ -399,6 +435,7 @@ export function VoicePanel({ roomId, roomMode, participants, deviceId, onMediaSt
                                 />
                             ))}
                     </div>
+                    )}
 
                     {/* Screen share preview (self) */}
                     {localScreenStream && (
