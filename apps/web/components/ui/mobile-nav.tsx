@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/design-system';
-import { Home, Users, MessageCircle, User, Plus } from './icons';
+import { Home, Users, MessageCircle, User, Plus, Heart } from './icons';
 
 interface NavItem {
     href: string;
@@ -14,6 +14,7 @@ interface NavItem {
 const navItems: NavItem[] = [
     { href: '/', label: 'Rooms', icon: <Home className="h-5 w-5" /> },
     { href: '/random', label: 'Random', icon: <Users className="h-5 w-5" /> },
+    { href: '/friends', label: 'Friends', icon: <Heart className="h-5 w-5" /> },
     { href: '/messages', label: 'Messages', icon: <MessageCircle className="h-5 w-5" /> },
     { href: '/profile', label: 'Profile', icon: <User className="h-5 w-5" /> },
 ];

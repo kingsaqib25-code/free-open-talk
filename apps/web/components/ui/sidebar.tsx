@@ -17,6 +17,7 @@ import {
     ChevronRight,
     LogOut,
     ChevronDown,
+    Heart,
 } from './icons';
 import { useState, useEffect, memo, useCallback } from 'react';
 import { useAuthStore, selectIsAuthenticated, selectUser } from '@/lib/stores';
@@ -43,6 +44,7 @@ interface NavItem {
 const mainNavItems: NavItem[] = [
     { href: '/', label: 'Voice Rooms', icon: <Home className="h-5 w-5" /> },
     { href: '/random', label: 'Random Match', icon: <Users className="h-5 w-5" /> },
+    { href: '/friends', label: 'Friends', icon: <Heart className="h-5 w-5" /> },
     { href: '/messages', label: 'Messages', icon: <MessageCircle className="h-5 w-5" /> },
 ];
 

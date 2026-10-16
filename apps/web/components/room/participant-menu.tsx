@@ -9,7 +9,7 @@
  * Rendered as a Radix dropdown anchored to the participant's tile/avatar.
  */
 import { useState } from 'react';
-import { useMutation } from 'convex/react';
+import { useMutation, useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import {
     DropdownMenu,
@@ -27,8 +27,17 @@ import {
     Shield,
     Hand,
     Lock,
+    Heart,
+    User,
 } from '@/components/ui/icons';
 import { blockDevice, unblockDevice, isBlocked } from '@/lib/blocked';
+
+/** Broadcast: open this participant's activity card (handled in room). */
+export function openParticipantCard(deviceId: string) {
+    window.dispatchEvent(
+        new CustomEvent('fot:open-participant-card', { detail: { deviceId } })
+    );
+}
 
 const REPORT_REASONS = [
     'Spam / flooding',
@@ -66,6 +75,41 @@ export function ParticipantMenu({
     const ban = useMutation(api.moderation.siteBan);
     const lowerHand = useMutation(api.moderation.lowerHand);
 
+    // Follow state (hidden for own row).
+    const isSelf = deviceId === targetDeviceId;
+    const following = useQuery(
+        api.follows.isFollowing,
+        isSelf
+            ? 'skip'
+            : { followerDeviceId: deviceId, followingDeviceId: targetDeviceId }
+    );
+    const followMut = useMutation(api.follows.follow);
+    const unfollowMut = useMutation(api.follows.unfollow);
+
+    const myNickname = () =>
+        typeof window === 'undefined'
+            ? 'Guest'
+            : localStorage.getItem('talkfree_nickname') || 'Guest';
+
+    const handleFollow = () =>
+        run(
+            () =>
+                following
+                    ? unfollowMut({
+                          followerDeviceId: deviceId,
+                          followingDeviceId: targetDeviceId,
+                      })
+                    : followMut({
+                          followerDeviceId: deviceId,
+                          followingDeviceId: targetDeviceId,
+                          followerNickname: myNickname(),
+                          followingNickname: targetNickname.slice(0, 30),
+                      }),
+            following
+                ? `Unfollowed ${targetNickname}.`
+                : `Following ${targetNickname} — you'll be notified when they're online. 🔥`
+        );
+
     const run = async (fn: () => Promise<unknown>, doneMsg: string) => {
         setBusy(true);
         try {
@@ -99,6 +143,21 @@ export function ParticipantMenu({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-56">
                 <DropdownMenuLabel className="truncate">{targetNickname}</DropdownMenuLabel>
+
+                <DropdownMenuItem onClick={() => openParticipantCard(targetDeviceId)}>
+                    <User className="h-4 w-4 mr-2" />
+                    View profile
+                </DropdownMenuItem>
+
+                {!isSelf && (
+                    <DropdownMenuItem onClick={handleFollow} disabled={busy || following === undefined}>
+                        <Heart
+                            className={`h-4 w-4 mr-2 ${following ? 'fill-current text-primary-400' : ''}`}
+                        />
+                        {following ? 'Following' : 'Follow'}
+                    </DropdownMenuItem>
+                )}
+
                 <DropdownMenuSeparator />
 
                 {REPORT_REASONS.map((reason) => (
