@@ -1,6 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { HEARTBEAT_TIMEOUT_MS } from "./rooms";
+import { accrueStreakHeartbeat } from "./streaks";
 
 /**
  * Presence: join / heartbeat / leave.
@@ -123,9 +124,14 @@ export const heartbeat = mutation({
       )
       .first();
     if (!p) return;
-    const patch: any = { lastHeartbeat: Date.now() };
+    const now = Date.now();
+    const patch: any = { lastHeartbeat: now };
     if (args.state) Object.assign(patch, args.state);
     await ctx.db.patch(p._id, patch);
+    // Phase 8 (engagement): cheap streak accounting — accrues today's
+    // minutes from heartbeat gaps; writes the streaks row only when the
+    // minute bucket changes (guarded inside accrueStreakHeartbeat).
+    await accrueStreakHeartbeat(ctx, args.deviceId, p.nickname, now);
   },
 });
 

@@ -13,7 +13,9 @@ const signalValidator = v.union(
   v.literal("answer"),
   v.literal("ice"),
   // Track metadata (screen-share announce/withdraw). Small JSON payload.
-  v.literal("track-meta")
+  v.literal("track-meta"),
+  // Phase 8 (engagement): live emoji reactions. Payload is JSON { emoji }.
+  v.literal("reaction")
 );
 
 export const push = mutation({

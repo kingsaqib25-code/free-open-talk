@@ -77,7 +77,10 @@ export default defineSchema({
       v.literal("ice"),
       // Track metadata: lets peers tell camera tracks apart from screen-share
       // tracks (e.g. { action: "add", kind: "screen", streamId }).
-      v.literal("track-meta")
+      v.literal("track-meta"),
+      // Phase 8 (engagement): live emoji reactions. Payload is JSON of
+      // { emoji: string }; broadcast to every other participant in the room.
+      v.literal("reaction")
     ),
     payload: v.string(), // JSON-stringified RTCSessionDescriptionInit / RTCIceCandidateInit
     createdAt: v.number(),
@@ -129,4 +132,25 @@ export default defineSchema({
   })
     .index("by_device", ["deviceId"])
     .index("by_endpoint", ["endpoint"]),
+
+  // Daily visit streaks (Phase 8 — engagement & delight). One row per
+  // deviceId (guest flows stay auth-free). A calendar day "counts" once the
+  // device accrues >= 10 active minutes that day (minutes accrue from
+  // presence heartbeat gaps — see convex/streaks.ts). Consecutive counted
+  // days grow currentStreak; a missed day resets it to 1.
+  streaks: defineTable({
+    deviceId: v.string(),
+    nickname: v.string(),
+    currentStreak: v.number(),
+    longestStreak: v.number(),
+    lastVisitDay: v.string(), // YYYY-MM-DD of the most recent active day
+    totalMinutes: v.number(),
+    claimedMilestones: v.array(v.string()), // e.g. ["7", "30"]
+    // Internal accounting (not shown in UI):
+    dayMinutes: v.optional(v.number()), // minutes accrued on lastVisitDay
+    dayCounted: v.optional(v.boolean()), // lastVisitDay already hit the 10-min threshold
+    lastCountedDay: v.optional(v.string()), // YYYY-MM-DD of the last counted day
+    lastStreakHeartbeatAt: v.optional(v.number()), // ms — cursor for gap-based accrual
+    lastStreakWriteAt: v.optional(v.number()), // dayMinutes value at the last write (write-spam guard)
+  }).index("by_deviceId", ["deviceId"]),
 });
