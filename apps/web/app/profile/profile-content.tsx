@@ -38,6 +38,8 @@ import {
 import { cn } from '@/lib/design-system';
 import { useProfile } from '@/lib/hooks/use-profile';
 import { useAuthStore } from '@/lib/stores';
+import { GoogleAccountSection } from '@/components/auth/google-one-tap';
+import { isGoogleConfigured } from '@/lib/google-auth';
 // import { EditProfileModal } from './edit-profile-modal';
 import type { UserActivity, UserRoom } from '@/lib/services/profile.service';
 import { EditProfileModal } from './edit-profile-modal';
@@ -221,6 +223,9 @@ export function ProfileContent() {
                 </CardContent>
             </Card>
 
+            {/* Google sync — one-tap sign in (guest-first: hidden when unconfigured) */}
+            <GoogleSyncCard />
+
             {/* Stats Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
                 <StatCard
@@ -286,6 +291,24 @@ export function ProfileContent() {
                 onSuccess={refetch}
             />
         </div>
+    );
+}
+
+function GoogleSyncCard() {
+    if (!isGoogleConfigured()) return null;
+    return (
+        <Card className="border-surface-border/50">
+            <CardContent className="p-4 sm:p-5">
+                <h3 className="text-sm font-semibold text-foreground mb-1">
+                    Sync across devices
+                </h3>
+                <p className="text-xs text-text-tertiary mb-3">
+                    Link Google to keep your friends, followers and streaks on
+                    every device. Guests keep working exactly as before.
+                </p>
+                <GoogleAccountSection />
+            </CardContent>
+        </Card>
     );
 }
 

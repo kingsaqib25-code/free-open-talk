@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as auth from "../auth.js";
 import type * as chat from "../chat.js";
 import type * as crons from "../crons.js";
 import type * as follows from "../follows.js";
@@ -20,6 +21,7 @@ import type * as sharedMedia from "../sharedMedia.js";
 import type * as signals from "../signals.js";
 import type * as streaks from "../streaks.js";
 import type * as watchparty from "../watchparty.js";
+import type * as youtube from "../youtube.js";
 
 import type {
   ApiFromModules,
@@ -28,6 +30,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  auth: typeof auth;
   chat: typeof chat;
   crons: typeof crons;
   follows: typeof follows;
@@ -40,6 +43,7 @@ declare const fullApi: ApiFromModules<{
   signals: typeof signals;
   streaks: typeof streaks;
   watchparty: typeof watchparty;
+  youtube: typeof youtube;
 }>;
 
 /**

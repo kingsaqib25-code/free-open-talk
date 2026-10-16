@@ -11,5 +11,10 @@ const crons = cronJobs();
 
 crons.interval("cleanup empty rooms", { minutes: 2 }, internal.rooms.cleanupEmpty);
 crons.interval("prune stale presence", { minutes: 2 }, internal.presence.cleanupStale);
+crons.daily(
+  "prune old YouTube search cache",
+  { hourUTC: 4, minuteUTC: 0 },
+  internal.youtube.cleanupOld
+);
 
 export default crons;

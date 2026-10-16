@@ -23,6 +23,7 @@ import { useState, useEffect, memo, useCallback } from 'react';
 import { useAuthStore, selectIsAuthenticated, selectUser } from '@/lib/stores';
 import { UserMenu } from '../auth';
 import { AuthenticatedMenu } from '../auth/user-menu';
+import { GoogleAccountSection } from '../auth/google-one-tap';
 import { useAuth } from '@/lib/hooks';
 import {
     DropdownMenu,
@@ -232,6 +233,10 @@ export function Sidebar() {
                 })}
             </nav>
 
+            {/* Google account — one-tap sync (guest-first: hidden when unconfigured) */}
+            <div className="p-1.5 border-t border-surface-border/50 mt-auto">
+                <GoogleAccountSection collapsed={isCollapsed} />
+            </div>
         </aside>
     );
 }

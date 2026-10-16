@@ -228,6 +228,29 @@ export default defineSchema({
     byDeviceId: v.string(),
   }).index("by_room", ["roomId"]),
 
+  // Google Sign In links (guest-first: optional, one-tap only).
+  // Links a guest deviceId to a stable Google identity (sub) so follows,
+  // friends and streaks survive across the user's devices. Guest flow is
+  // untouched — linking is purely additive.
+  googleLinks: defineTable({
+    deviceId: v.string(), // guest device that linked
+    googleSub: v.string(), // stable Google user id (JWT sub)
+    email: v.string(),
+    name: v.string(),
+    picture: v.optional(v.string()),
+    linkedAt: v.number(),
+  })
+    .index("by_deviceId", ["deviceId"])
+    .index("by_googleSub", ["googleSub"]),
+
+  // YouTube Data API quota cache (10k units/day free). Search results are
+  // cached per normalized query for 1 hour — see convex/youtube.ts.
+  ytCache: defineTable({
+    query: v.string(), // normalized (trimmed, lowercased)
+    resultsJson: v.string(), // JSON-encoded YouTubeSearchResult[]
+    createdAt: v.number(),
+  }).index("by_query", ["query"]),
+
   // Friend / follow system (guest-friendly: identity = deviceId, no accounts).
   // A follows B => A gets a Web Push when B comes online (rate-limited).
   follows: defineTable({

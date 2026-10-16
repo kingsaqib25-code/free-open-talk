@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { resolveIdentity } from "./auth";
 
 /**
  * Daily visit streaks (Phase 8 — engagement & delight). $0 infra: rows are
@@ -36,10 +37,13 @@ function previousDay(day: string): string {
 }
 
 async function rowByDeviceId(ctx: any, deviceId: string) {
-  return await ctx.db
+  // Stable identity: googleSub when Google is linked, else the deviceId.
+  const id = await resolveIdentity(ctx, deviceId);
+  const row = await ctx.db
     .query("streaks")
-    .withIndex("by_deviceId", (q: any) => q.eq("deviceId", deviceId))
+    .withIndex("by_deviceId", (q: any) => q.eq("deviceId", id))
     .first();
+  return { row, identity: id };
 }
 
 /**
@@ -89,10 +93,10 @@ export async function accrueStreakHeartbeat(
   now: number
 ) {
   const day = dayString(now);
-  const row = await rowByDeviceId(ctx, deviceId);
+  const { row, identity } = await rowByDeviceId(ctx, deviceId);
   if (!row) {
     await ctx.db.insert("streaks", {
-      deviceId,
+      deviceId: identity,
       nickname: nickname.slice(0, 30),
       currentStreak: 0,
       longestStreak: 0,
@@ -132,7 +136,8 @@ export async function accrueStreakHeartbeat(
 export const get = query({
   args: { deviceId: v.string() },
   handler: async (ctx, args) => {
-    return await rowByDeviceId(ctx, args.deviceId);
+    const { row } = await rowByDeviceId(ctx, args.deviceId);
+    return row;
   },
 });
 
@@ -151,10 +156,12 @@ export const recordMinutes = mutation({
     const minutes = Math.max(0, Math.min(1440, args.minutes));
     const day = args.day ?? dayString(Date.now());
     const now = Date.now();
-    let row: any = await rowByDeviceId(ctx, args.deviceId);
+    const resolved = await rowByDeviceId(ctx, args.deviceId);
+    let row: any = resolved.row;
+    const identity: string = resolved.identity;
     if (!row) {
       const id = await ctx.db.insert("streaks", {
-        deviceId: args.deviceId,
+        deviceId: identity,
         nickname: args.nickname.slice(0, 30),
         currentStreak: 0,
         longestStreak: 0,
@@ -212,7 +219,7 @@ export const claimMilestone = mutation({
     if (!(MILESTONES as readonly number[]).includes(args.milestone)) {
       throw new Error("Unknown milestone.");
     }
-    const row = await rowByDeviceId(ctx, args.deviceId);
+    const { row } = await rowByDeviceId(ctx, args.deviceId);
     if (!row) return { claimed: false as const };
     const key = String(args.milestone);
     if (row.currentStreak < args.milestone) return { claimed: false as const };
@@ -228,7 +235,7 @@ export const claimMilestone = mutation({
 export const hostStreak = query({
   args: { deviceId: v.string() },
   handler: async (ctx, args) => {
-    const row = await rowByDeviceId(ctx, args.deviceId);
+    const { row } = await rowByDeviceId(ctx, args.deviceId);
     return row?.currentStreak ?? 0;
   },
 });

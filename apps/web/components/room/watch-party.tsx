@@ -27,7 +27,7 @@ import {
     useRef,
     useState,
 } from 'react';
-import { useQuery, useMutation } from 'convex/react';
+import { useQuery, useMutation, useConvex } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { cn } from '@/lib/design-system';
 import { Button, Input, Card } from '@/components/ui';
@@ -1366,8 +1366,10 @@ export function YouTubePickTab({
     const [searchError, setSearchError] = useState<string | null>(null);
     const [searchedOnce, setSearchedOnce] = useState(false);
     const [linkMode, setLinkMode] = useState(false);
+    const convex = useConvex();
 
     // Debounced live search (~400ms). Aborts the in-flight request on each keystroke.
+    // Quota guard: checks the 1-hour Convex cache first (convex/youtube.ts).
     useEffect(() => {
         const q = query.trim();
         if (!YOUTUBE_API_KEY || linkMode) return;
@@ -1382,9 +1384,28 @@ export function YouTubePickTab({
             setSearching(true);
             setSearchError(null);
             try {
+                // 1) Cache first — zero quota when someone searched this recently.
+                const cached = await convex.query(api.youtube.searchCached, {
+                    query: q,
+                });
+                if (ctrl.signal.aborted) return;
+                if (Array.isArray(cached) && cached.length > 0) {
+                    setResults(cached as YouTubeSearchResult[]);
+                    setSearchedOnce(true);
+                    return;
+                }
+                // 2) Cache miss — hit the API, then store for the next searcher.
                 const items = await searchYouTubeVideos(q, ctrl.signal);
                 setResults(items);
                 setSearchedOnce(true);
+                if (items.length > 0) {
+                    void convex
+                        .mutation(api.youtube.saveCache, {
+                            query: q,
+                            resultsJson: JSON.stringify(items),
+                        })
+                        .catch(() => {});
+                }
             } catch (e) {
                 if ((e as Error)?.name === 'AbortError') return;
                 setSearchError(
@@ -1399,7 +1420,7 @@ export function YouTubePickTab({
             clearTimeout(timer);
             ctrl.abort();
         };
-    }, [query, linkMode]);
+    }, [query, linkMode, convex]);
 
     // Graceful fallback: no key, or user chose link mode after an error.
     if (!YOUTUBE_API_KEY || linkMode) {

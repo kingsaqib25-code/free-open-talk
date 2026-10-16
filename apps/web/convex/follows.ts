@@ -8,9 +8,12 @@ import {
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { HEARTBEAT_TIMEOUT_MS } from "./rooms";
+import { resolveIdentity } from "./auth";
 
 /**
  * Friend / follow system. Guest-friendly: identity = deviceId, no accounts.
+ * When Google is linked, identity resolves to the stable googleSub so the
+ * social graph survives across devices (see convex/auth.ts).
  * A follows B => A gets a Web Push ("🔥 {nickname} is online now") when B
  * comes online — rate-limited to 1 per 30 min per pair, skipped silently
  * when A has no push subscription. $0 infra (self-hosted Web Push).
@@ -26,21 +29,22 @@ export const follow = mutation({
     followingNickname: v.string(),
   },
   handler: async (ctx, args) => {
-    if (args.followerDeviceId === args.followingDeviceId) {
+    // Resolve to stable identities (googleSub when linked).
+    const follower = await resolveIdentity(ctx, args.followerDeviceId);
+    const following = await resolveIdentity(ctx, args.followingDeviceId);
+    if (follower === following) {
       throw new Error("You can't follow yourself.");
     }
     const existing = await ctx.db
       .query("follows")
-      .withIndex("by_follower", (q) =>
-        q.eq("followerDeviceId", args.followerDeviceId)
-      )
+      .withIndex("by_follower", (q) => q.eq("followerDeviceId", follower))
       .collect();
-    if (existing.some((f) => f.followingDeviceId === args.followingDeviceId)) {
+    if (existing.some((f) => f.followingDeviceId === following)) {
       return { alreadyFollowing: true as const };
     }
     await ctx.db.insert("follows", {
-      followerDeviceId: args.followerDeviceId,
-      followingDeviceId: args.followingDeviceId,
+      followerDeviceId: follower,
+      followingDeviceId: following,
       followerNickname: args.followerNickname.slice(0, 30),
       followingNickname: args.followingNickname.slice(0, 30),
       createdAt: Date.now(),
@@ -55,14 +59,14 @@ export const unfollow = mutation({
     followingDeviceId: v.string(),
   },
   handler: async (ctx, args) => {
+    const follower = await resolveIdentity(ctx, args.followerDeviceId);
+    const following = await resolveIdentity(ctx, args.followingDeviceId);
     const rows = await ctx.db
       .query("follows")
-      .withIndex("by_follower", (q) =>
-        q.eq("followerDeviceId", args.followerDeviceId)
-      )
+      .withIndex("by_follower", (q) => q.eq("followerDeviceId", follower))
       .collect();
     for (const r of rows) {
-      if (r.followingDeviceId === args.followingDeviceId) {
+      if (r.followingDeviceId === following) {
         await ctx.db.delete(r._id);
       }
     }
@@ -70,28 +74,26 @@ export const unfollow = mutation({
   },
 });
 
-/** Everyone following this device (for the follower list / notify fan-out). */
+/** Everyone following this identity (for the follower list / notify fan-out). */
 export const followers = query({
   args: { deviceId: v.string() },
   handler: async (ctx, args) => {
+    const id = await resolveIdentity(ctx, args.deviceId);
     return await ctx.db
       .query("follows")
-      .withIndex("by_following", (q) =>
-        q.eq("followingDeviceId", args.deviceId)
-      )
+      .withIndex("by_following", (q) => q.eq("followingDeviceId", id))
       .collect();
   },
 });
 
-/** Everyone this device follows (the Friends list). */
+/** Everyone this identity follows (the Friends list). */
 export const following = query({
   args: { deviceId: v.string() },
   handler: async (ctx, args) => {
+    const id = await resolveIdentity(ctx, args.deviceId);
     return await ctx.db
       .query("follows")
-      .withIndex("by_follower", (q) =>
-        q.eq("followerDeviceId", args.deviceId)
-      )
+      .withIndex("by_follower", (q) => q.eq("followerDeviceId", id))
       .collect();
   },
 });
@@ -99,19 +101,20 @@ export const following = query({
 export const isFollowing = query({
   args: { followerDeviceId: v.string(), followingDeviceId: v.string() },
   handler: async (ctx, args) => {
+    const follower = await resolveIdentity(ctx, args.followerDeviceId);
+    const followingId = await resolveIdentity(ctx, args.followingDeviceId);
     const rows = await ctx.db
       .query("follows")
-      .withIndex("by_follower", (q) =>
-        q.eq("followerDeviceId", args.followerDeviceId)
-      )
+      .withIndex("by_follower", (q) => q.eq("followerDeviceId", follower))
       .collect();
-    return rows.some((r) => r.followingDeviceId === args.followingDeviceId);
+    return rows.some((r) => r.followingDeviceId === followingId);
   },
 });
 
 /**
- * Online status for a batch of devices (drives the Friends list dots).
- * A device is online if it has any live participant row anywhere.
+ * Online status for a batch of identities (drives the Friends list dots).
+ * An identity is online if ANY of its linked devices has a live participant
+ * row anywhere (googleSub expands to all linked deviceIds).
  */
 export const onlineStatus = query({
   args: { deviceIds: v.array(v.string()) },
@@ -121,13 +124,24 @@ export const onlineStatus = query({
       string,
       { online: boolean; nickname?: string; roomId?: string }
     > = {};
-    for (const deviceId of args.deviceIds.slice(0, 100)) {
-      const rows = await ctx.db
-        .query("participants")
-        .withIndex("by_device", (q) => q.eq("deviceId", deviceId))
+    for (const id of args.deviceIds.slice(0, 100)) {
+      // Expand googleSub -> all linked deviceIds; plain deviceIds stay as-is.
+      const candidates = new Set<string>([id]);
+      const links = await ctx.db
+        .query("googleLinks")
+        .withIndex("by_googleSub", (q) => q.eq("googleSub", id))
         .collect();
-      const live = rows.find((r) => r.lastHeartbeat > cutoff);
-      out[deviceId] = live
+      for (const l of links) candidates.add(l.deviceId as string);
+      let live: any = null;
+      for (const deviceId of candidates) {
+        const rows = await ctx.db
+          .query("participants")
+          .withIndex("by_device", (q) => q.eq("deviceId", deviceId))
+          .collect();
+        live = rows.find((r) => r.lastHeartbeat > cutoff);
+        if (live) break;
+      }
+      out[id] = live
         ? {
             online: true,
             nickname: live.nickname,
@@ -143,11 +157,10 @@ export const onlineStatus = query({
 export const followersInternal = internalQuery({
   args: { deviceId: v.string() },
   handler: async (ctx, args) => {
+    const id = await resolveIdentity(ctx, args.deviceId);
     return await ctx.db
       .query("follows")
-      .withIndex("by_following", (q) =>
-        q.eq("followingDeviceId", args.deviceId)
-      )
+      .withIndex("by_following", (q) => q.eq("followingDeviceId", id))
       .collect();
   },
 });
