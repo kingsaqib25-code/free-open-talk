@@ -54,6 +54,12 @@ import ReactionBar, {
 import ReactionOverlay, { type ReactionEvent } from '@/components/engagement/ReactionOverlay';
 import ConfettiBurst from '@/components/engagement/ConfettiBurst';
 import { useMilestone } from '@/components/engagement/useMilestone';
+import { AppsPanel, AppsPanelButton } from '@/components/room/apps-panel';
+import { ToolsPanel, ToolsPanelButton } from '@/components/room/tools-panel';
+import { PlatformEmbed } from '@/components/room/platform-embed';
+import { Whiteboard } from '@/components/room/whiteboard';
+import { TicTacToe } from '@/components/room/tictactoe';
+import { RoomNotepad } from '@/components/room/room-notepad';
 import { getBlockedDevices } from '@/lib/blocked';
 import { Hand, Smile, Reply } from '@/components/ui/icons';
 
@@ -101,6 +107,8 @@ export function RoomContent({ roomId }: RoomContentProps) {
         text: string;
     } | null>(null);
     const [menuNotice, setMenuNotice] = useState<string | null>(null);
+    const [appsOpen, setAppsOpen] = useState(false);
+    const [toolsOpen, setToolsOpen] = useState(false);
 
     const participantList = useMemo(
         () => (participants ?? []) as PresenceParticipant[],
@@ -216,6 +224,8 @@ export function RoomContent({ roomId }: RoomContentProps) {
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                     <WatchPartyHeaderButton />
+                    <AppsPanelButton onClick={() => setAppsOpen(true)} />
+                    <ToolsPanelButton onClick={() => setToolsOpen(true)} />
                     {iAmOwner && (
                         <RoomSettings
                             roomId={roomId}
@@ -373,6 +383,25 @@ export function RoomContent({ roomId }: RoomContentProps) {
         <WatchPartyStartModal />
         <WatchPartyOverlay />
         <ScreenSharePreviewModal />
+        <AppsPanel
+            roomId={roomId}
+            deviceId={deviceId}
+            open={appsOpen}
+            onClose={() => setAppsOpen(false)}
+            appViews={{
+                whiteboard: <Whiteboard roomId={roomId} deviceId={deviceId} />,
+                document: <RoomNotepad roomId={roomId} />,
+                game: <TicTacToe roomId={roomId} deviceId={deviceId} />,
+                gamesparty: <TicTacToe roomId={roomId} deviceId={deviceId} />,
+            }}
+        />
+        <ToolsPanel
+            roomId={roomId}
+            deviceId={deviceId}
+            open={toolsOpen}
+            onClose={() => setToolsOpen(false)}
+        />
+        <PlatformEmbed roomId={roomId} deviceId={deviceId} />
         <RoomReactions
             roomId={roomId}
             deviceId={deviceId}

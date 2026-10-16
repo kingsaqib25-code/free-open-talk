@@ -122,6 +122,16 @@ export default defineSchema({
     hostDeviceId: v.string(),
   }).index("by_room", ["roomId"]),
 
+  // Shared platform media (in-room Apps Panel): one live share per room.
+  sharedMedia: defineTable({
+    roomId: v.id("rooms"),
+    platform: v.string(), // tiktok | twitch | vimeo | dailymotion | spotify | x | facebook | instagram
+    ref: v.string(), // embed-ready id / parsed reference
+    title: v.optional(v.string()),
+    hostDeviceId: v.string(),
+    createdAt: v.number(),
+  }).index("by_room", ["roomId"]),
+
   // Web Push subscriptions (PWA). One row per device; endpoint is the
   // unique key. VAPID keys live in env (never in code).
   pushSubscriptions: defineTable({
