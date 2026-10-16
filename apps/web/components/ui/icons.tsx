@@ -64,6 +64,8 @@ import {
     WifiOff,
     UserPlus,
     UserMinus,
+    Video,
+    VideoOff,
     // New icons for redesigned room UI
     Monitor,
     MonitorOff,
@@ -138,6 +140,8 @@ export {
     WifiOff,
     UserPlus,
     UserMinus,
+    Video,
+    VideoOff,
     // New icons for redesigned room UI
     Monitor,
     MonitorOff,

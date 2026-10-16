@@ -37,6 +37,8 @@ import {
     useSendChat,
     type RoomMediaState,
 } from '@/lib/hooks/use-convex-room';
+import { VoiceProvider } from '@/lib/services/p2p';
+import { VoicePanel, type PresenceParticipant } from './voice-panel';
 
 interface RoomContentProps {
     roomId: string;
@@ -53,14 +55,18 @@ export function RoomContent({ roomId }: RoomContentProps) {
     // Room data straight from Convex. `undefined` = loading, `null` = gone.
     const room = useQuery(api.rooms.get, { roomId: roomId as any });
 
+    // Live media state (mic/camera/screen) flows up from the VoicePanel
+    // into the presence heartbeat.
+    const [mediaState, setMediaState] = useState<RoomMediaState>(DEFAULT_MEDIA_STATE);
+
     // Presence + chat via Convex (joins automatically on mount).
-    const { participants, messages } = useConvexRoom(roomId, DEFAULT_MEDIA_STATE);
+    const { participants, messages, deviceId } = useConvexRoom(roomId, mediaState);
     const sendChat = useSendChat(roomId);
     const [chatText, setChatText] = useState('');
     const [isSending, setIsSending] = useState(false);
 
     const participantList = useMemo(
-        () => (participants ?? []) as Array<{ deviceId: string; nickname: string; isOwner: boolean }>,
+        () => (participants ?? []) as PresenceParticipant[],
         [participants]
     );
     const messageList = useMemo(
@@ -97,6 +103,7 @@ export function RoomContent({ roomId }: RoomContentProps) {
     }
 
     return (
+        <VoiceProvider>
         <div className="flex flex-col h-screen bg-background-primary">
             {/* Header */}
             <header className="flex items-center justify-between px-4 py-3 border-b border-surface-border bg-background-secondary/50">
@@ -164,24 +171,14 @@ export function RoomContent({ roomId }: RoomContentProps) {
                         )}
                     </Card>
 
-                    {/* Voice placeholder — Phase 2 wires the P2P mesh here */}
-                    <Card variant="gradient">
-                        <div className="flex flex-col items-center text-center py-8 px-4">
-                            <div className="w-14 h-14 rounded-full bg-primary-500/15 flex items-center justify-center mb-4">
-                                <Mic className="h-7 w-7 text-primary-400" />
-                            </div>
-                            <h2 className="text-base font-semibold text-text-primary mb-1">
-                                Voice chat is on its way
-                            </h2>
-                            <p className="text-sm text-text-secondary max-w-sm">
-                                Talk, listen, and practice together right in your browser —
-                                no downloads, no sign-up. Voice arrives with the next update.
-                            </p>
-                            <p className="text-xs text-text-tertiary mt-3">
-                                Meanwhile, say hi in the chat →
-                            </p>
-                        </div>
-                    </Card>
+                    {/* Voice / video (P2P mesh) */}
+                    <VoicePanel
+                        roomId={roomId}
+                        roomMode={(room.mode ?? 'voice') as 'voice' | 'stage' | 'private'}
+                        participants={participantList}
+                        deviceId={deviceId}
+                        onMediaStateChange={setMediaState}
+                    />
                 </div>
 
                 {/* Right: chat */}
@@ -217,6 +214,7 @@ export function RoomContent({ roomId }: RoomContentProps) {
                 </div>
             </div>
         </div>
+        </VoiceProvider>
     );
 }
 
