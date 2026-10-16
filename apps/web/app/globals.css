@@ -4,56 +4,57 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Primary - Purple accent (signature color) */
-  --color-primary-50: #f5f3ff;
-  --color-primary-100: #ede9fe;
-  --color-primary-200: #ddd6fe;
-  --color-primary-300: #c4b5fd;
-  --color-primary-400: #a78bfa;
-  --color-primary-500: #8b5cf6;
-  --color-primary-600: #7c3aed;
-  --color-primary-700: #6d28d9;
-  --color-primary-800: #5b21b6;
-  --color-primary-900: #4c1d95;
+  /* Primary - Warm orange (signature color, cozy café) */
+  --color-primary-50: #fff7ed;
+  --color-primary-100: #ffedd5;
+  --color-primary-200: #fed7aa;
+  --color-primary-300: #fdba74;
+  --color-primary-400: #fb923c;
+  --color-primary-500: #f97316;
+  --color-primary-600: #ea580c;
+  --color-primary-700: #c2410c;
+  --color-primary-800: #9a3412;
+  --color-primary-900: #7c2d12;
 
-  /* Secondary - Indigo */
-  --color-secondary-500: #6366f1;
-  --color-secondary-600: #4f46e5;
+  /* Secondary - Amber gold */
+  --color-secondary-400: #fbbf24;
+  --color-secondary-500: #f59e0b;
+  --color-secondary-600: #d97706;
 
-  /* Background colors - Dark theme */
-  --color-background-primary: #0d0d14;
-  --color-background-secondary: #13131f;
-  --color-background-tertiary: #1a1a2e;
-  --color-background-elevated: #252538;
+  /* Background colors - Deep warm charcoal */
+  --color-background-primary: #14100c;
+  --color-background-secondary: #1a1410;
+  --color-background-tertiary: #221a12;
+  --color-background-elevated: #2a2015;
 
-  /* Surface colors */
-  --color-surface-default: #16162a;
-  --color-surface-hover: #1e1e38;
-  --color-surface-active: #262648;
-  --color-surface-border: #2a2a4a;
-  --color-surface-borderSubtle: #1f1f3a;
+  /* Surface colors - Warm slate */
+  --color-surface-default: #211a13;
+  --color-surface-hover: #2a2117;
+  --color-surface-active: #332920;
+  --color-surface-border: #3a2d1e;
+  --color-surface-borderSubtle: #2c2318;
 
-  /* Text colors */
-  --color-text-primary: #f8fafc;
-  --color-text-secondary: #a1a1aa;
-  --color-text-tertiary: #71717a;
-  --color-text-accent: #a78bfa;
+  /* Text colors - Warm whites */
+  --color-text-primary: #faf5ed;
+  --color-text-secondary: #c9bda9;
+  --color-text-tertiary: #8a7d68;
+  --color-text-accent: #fdba74;
 
   /* Status colors */
-  --color-status-success: #22c55e;
+  --color-status-success: #4ade80;
   --color-status-warning: #f59e0b;
-  --color-status-error: #ef4444;
-  --color-status-info: #3b82f6;
+  --color-status-error: #f87171;
+  --color-status-info: #fbbf24;
 
   /* Voice/Audio */
-  --color-voice-speaking: #22c55e;
-  --color-voice-muted: #ef4444;
-  --color-voice-idle: #71717a;
+  --color-voice-speaking: #f59e0b;
+  --color-voice-muted: #f87171;
+  --color-voice-idle: #8a7d68;
 
   /* Shadows */
-  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.3);
-  --shadow-cardHover: 0 8px 30px rgba(0, 0, 0, 0.4), 0 0 20px rgba(139, 92, 246, 0.15);
-  --shadow-glow: 0 0 20px rgba(139, 92, 246, 0.4);
+  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.35);
+  --shadow-cardHover: 0 8px 30px rgba(0, 0, 0, 0.45), 0 0 24px rgba(249, 115, 22, 0.18);
+  --shadow-glow: 0 0 22px rgba(249, 115, 22, 0.45);
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -103,6 +104,7 @@
   --color-primary-800: var(--color-primary-800);
   --color-primary-900: var(--color-primary-900);
 
+  --color-secondary-400: var(--color-secondary-400);
   --color-secondary-500: var(--color-secondary-500);
   --color-secondary-600: var(--color-secondary-600);
 
@@ -249,12 +251,12 @@ body {
   0%,
   100% {
     transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.45);
   }
 
   50% {
     transform: scale(1.05);
-    box-shadow: 0 0 0 8px rgba(34, 197, 94, 0);
+    box-shadow: 0 0 0 10px rgba(245, 158, 11, 0);
   }
 }
 
@@ -317,7 +319,7 @@ body {
 
 /* Glassmorphism */
 .glass {
-  background: rgba(13, 13, 20, 0.8);
+  background: rgba(20, 16, 12, 0.8);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -370,7 +372,7 @@ body {
   --chart-5: oklch(0.645 0.246 16.439);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary: oklch(0.646 0.222 41.116);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
