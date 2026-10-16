@@ -36,7 +36,8 @@ export function buildEmbedUrl(platform: string, ref: string): string {
     case 'spotify':
       return `https://open.spotify.com/embed/${ref.replace(/^\/+/, '')}`;
     case 'x':
-      return `https://platform.twitter.com/embed/Tweet.html?id=${encodeURIComponent(ref)}`;
+      // Official widgets.js embed (srcDoc) — videos play, unlike the static Tweet.html endpoint.
+      return `x-srcdoc:${encodeURIComponent(ref)}`;
     case 'facebook':
       return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(ref)}&show_text=false`;
     case 'instagram':
@@ -44,6 +45,12 @@ export function buildEmbedUrl(platform: string, ref: string): string {
     default:
       return ref;
   }
+}
+
+/** Official Twitter widgets.js embed HTML (videos play reliably). Rendered via iframe srcDoc. */
+export function buildXEmbedHtml(tweetId: string): string {
+  const url = `https://x.com/i/status/${encodeURIComponent(tweetId)}`;
+  return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;padding:0;background:#000;display:flex;justify-content:center;min-height:100%}.twitter-tweet{margin:12px auto!important;max-width:550px;width:100%}</style></head><body><blockquote class="twitter-tweet" data-theme="dark" data-dnt="true"><a href="${url}"></a></blockquote><script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script></body></html>`;
 }
 
 const SYNC_LABEL: Record<string, string> = {
@@ -72,7 +79,11 @@ export function PlatformEmbed({
   const iAmHost = session.hostDeviceId === deviceId;
   const syncLabel = SYNC_LABEL[session.platform] ?? 'plays together';
   const isInstagram = session.platform === 'instagram';
+  const isX = session.platform === 'x';
   const embedUrl = buildEmbedUrl(session.platform, session.ref);
+  const xSrcDoc = isX
+    ? buildXEmbedHtml(decodeURIComponent(embedUrl.replace(/^x-srcdoc:/, '')))
+    : null;
 
   /** Best-effort host play/pause relay via postMessage. */
   const relay = (action: 'play' | 'pause') => {
@@ -156,6 +167,16 @@ export function PlatformEmbed({
               Open in Instagram
             </a>
           </div>
+        ) : isX && xSrcDoc ? (
+          <iframe
+            ref={iframeRef}
+            srcDoc={xSrcDoc}
+            title={session.title || 'Shared tweet'}
+            className="h-full w-full bg-black"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+            allowFullScreen
+            loading="lazy"
+          />
         ) : (
           <iframe
             ref={iframeRef}
