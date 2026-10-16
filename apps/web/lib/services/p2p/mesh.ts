@@ -95,6 +95,12 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
     private cameraStream: MediaStream | null = null;
     /** Screen-share stream from getDisplayMedia. */
     private screenStream: MediaStream | null = null;
+    /** Display stream captured by beginScreenSharePreview, not yet published. */
+    private previewScreenStream: MediaStream | null = null;
+    /** Host paused the shared screen video track (track.enabled = false). */
+    private screenSharePaused = false;
+    /** Remote deviceId -> host-paused state of their shared screen. */
+    private remoteScreenPaused = new Map<string, boolean>();
     /** Whether the camera should be on whenever we are publishing. */
     private videoDesired = false;
     private localMonitor: AudioLevelMonitor | null = null;
@@ -366,6 +372,7 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
             slot.pc.close();
         } catch { /* ignore */ }
         this.peers.delete(peerId);
+        this.remoteScreenPaused.delete(peerId);
 
         const next = new Map(this.state.remoteParticipants);
         next.delete(peerId);
@@ -598,8 +605,17 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
                     });
                 }
             }
+            // Host pause/resume of a live share rides on the same
+            // announcement so viewers can show a paused banner instead of
+            // a black frame. Optional runtime field — never filtered.
+            const paused = (meta as { paused?: unknown }).paused;
+            if (typeof paused === 'boolean') {
+                this.remoteScreenPaused.set(fromDeviceId, paused);
+                this.emit('screen-share-paused', fromDeviceId, paused);
+            }
         } else if (meta.action === 'remove') {
             slot.streamKinds.delete(meta.streamId);
+            this.remoteScreenPaused.delete(fromDeviceId);
             const cur = this.state.remoteParticipants.get(fromDeviceId);
             if (cur?.screenTrack) {
                 const sid = slot.trackStreams.get(cur.screenTrack.id);
@@ -788,36 +804,13 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
     }
 
     /**
-     * Share screen / window / tab, with system/tab audio when the OS
-     * provides it. Must be called from a user gesture (button click)
-     * or the browser may block the picker.
+     * Publish an already-captured display stream to every peer. Shared by
+     * startScreenShare (instant) and publishScreenSharePreview (after the
+     * user approves the preview) — identical wire behavior either way.
      *
-     * Zero platform restrictions: we request whatever the OS offers and
-     * share it as-is. If a source app shows a black screen due to its own
-     * DRM, that is the other company's restriction, not ours.
+     * Zero platform restrictions: we publish whatever the OS gave us, as-is.
      */
-    async startScreenShare(): Promise<void> {
-        if (this.state.isSharingScreen || this.disposed) return;
-        if (!this.state.isConnected || !this.state.isPublishing) {
-            throw new Error('Join as a publisher before sharing your screen.');
-        }
-        let stream: MediaStream;
-        try {
-            stream = await navigator.mediaDevices.getDisplayMedia({
-                video: true,
-                // System/tab audio: the browser only includes it when the
-                // user picks a tab and ticks "Share tab audio" (or the OS
-                // provides loopback). Absent on some platforms — handled below.
-                audio: true,
-            });
-        } catch (err) {
-            // User cancelled the picker — not an error worth surfacing.
-            if (err instanceof DOMException && err.name === 'NotAllowedError') {
-                this.log('screen share picker cancelled');
-                return;
-            }
-            throw err;
-        }
+    private async publishScreenStream(stream: MediaStream): Promise<void> {
         const videoTrack = stream.getVideoTracks()[0];
         const audioTrack = stream.getAudioTracks()[0] ?? null;
         if (!videoTrack) {
@@ -825,6 +818,7 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
             throw new Error('Screen share produced no video track.');
         }
         this.screenStream = stream;
+        this.screenSharePaused = false;
         const meta: TrackMetaPayload = {
             action: 'add',
             kind: 'screen',
@@ -850,6 +844,160 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
         this.updateState({ localScreenTrack: videoTrack, isSharingScreen: true, isSharingScreenAudio: !!audioTrack });
         this.emit('screen-share-changed', true);
         this.log(`screen share started${audioTrack ? ' (with audio)' : ' (video only)'}`);
+    }
+
+    /**
+     * Capture a display stream and hold it as a PREVIEW — nothing is
+     * published to peers until publishScreenSharePreview() is called.
+     * Lets the UI show "here is what everyone will see" with Go Live /
+     * Cancel before anyone else sees a pixel.
+     *
+     * Must be called from a user gesture (button click) or the browser
+     * may block the picker. Returns null when the user cancels the picker.
+     * Zero platform restrictions: we request whatever the OS offers.
+     */
+    async beginScreenSharePreview(): Promise<MediaStream | null> {
+        if (this.disposed) throw new Error('Screen share unavailable.');
+        if (this.state.isSharingScreen || this.previewScreenStream) {
+            return this.previewScreenStream;
+        }
+        if (!this.state.isConnected || !this.state.isPublishing) {
+            throw new Error('Join as a publisher before sharing your screen.');
+        }
+        let stream: MediaStream;
+        try {
+            stream = await navigator.mediaDevices.getDisplayMedia({
+                video: true,
+                // System/tab audio: the browser only includes it when the
+                // user picks a tab and ticks "Share tab audio" (or the OS
+                // provides loopback). Absent on some platforms — handled below.
+                audio: true,
+            });
+        } catch (err) {
+            // User cancelled the picker — not an error worth surfacing.
+            if (err instanceof DOMException && err.name === 'NotAllowedError') {
+                this.log('screen share picker cancelled');
+                return null;
+            }
+            throw err;
+        }
+        const videoTrack = stream.getVideoTracks()[0];
+        if (!videoTrack) {
+            stream.getTracks().forEach((t) => t.stop());
+            throw new Error('Screen share produced no video track.');
+        }
+        // OS-level stop (browser "Stop sharing") during preview → drop it.
+        const onEnded = () => {
+            if (this.previewScreenStream === stream) this.cancelScreenSharePreview();
+        };
+        videoTrack.onended = onEnded;
+        const audioTrack = stream.getAudioTracks()[0] ?? null;
+        if (audioTrack) audioTrack.onended = onEnded;
+        this.previewScreenStream = stream;
+        this.emit('screen-share-preview', stream);
+        return stream;
+    }
+
+    /**
+     * Go live with the previewed stream: publish it to every peer.
+     * No-op (with preview discarded) if a live share is already running.
+     */
+    async publishScreenSharePreview(): Promise<void> {
+        const stream = this.previewScreenStream;
+        if (!stream) return;
+        this.previewScreenStream = null;
+        this.emit('screen-share-preview', null);
+        if (this.state.isSharingScreen || this.disposed) {
+            stream.getTracks().forEach((t) => {
+                try { t.stop(); } catch { /* ignore */ }
+            });
+            return;
+        }
+        await this.publishScreenStream(stream);
+    }
+
+    /** Discard the preview without publishing anything. */
+    cancelScreenSharePreview(): void {
+        const stream = this.previewScreenStream;
+        if (!stream) return;
+        this.previewScreenStream = null;
+        stream.getTracks().forEach((t) => {
+            try { t.stop(); } catch { /* ignore */ }
+        });
+        this.emit('screen-share-preview', null);
+        this.log('screen share preview cancelled');
+    }
+
+    /**
+     * Pause / resume the live share WITHOUT stopping it: the video track
+     * is disabled (peers keep the connection, viewers see the last frame
+     * or a paused banner) and re-enabled on resume. Audio is untouched.
+     * Viewers are notified via track-meta so they can show the paused state.
+     */
+    setScreenSharePaused(paused: boolean): void {
+        const track = this.state.localScreenTrack;
+        if (!track || !this.state.isSharingScreen) return;
+        if (this.screenSharePaused === paused) return;
+        track.enabled = !paused;
+        this.screenSharePaused = paused;
+        const meta = {
+            action: 'add',
+            kind: 'screen',
+            streamId: this.screenStream?.id ?? '',
+            paused,
+        } as TrackMetaPayload;
+        for (const [peerId] of this.peers) {
+            this.sendSignal(peerId, 'track-meta', meta);
+        }
+        this.emit('screen-share-paused', null, paused);
+        this.log(`screen share ${paused ? 'paused' : 'resumed'}`);
+    }
+
+    /** Whether the host's live share is currently paused. */
+    getScreenSharePaused(): boolean {
+        return this.screenSharePaused;
+    }
+
+    /**
+     * Share screen / window / tab, with system/tab audio when the OS
+     * provides it. Publishes immediately (no preview) — use
+     * beginScreenSharePreview + publishScreenSharePreview for the
+     * preview-before-live flow.
+     *
+     * Must be called from a user gesture (button click)
+     * or the browser may block the picker.
+     *
+     * Zero platform restrictions: we request whatever the OS offers and
+     * share it as-is. If a source app shows a black screen due to its own
+     * DRM, that is the other company's restriction, not ours.
+     */
+    async startScreenShare(): Promise<void> {
+        if (this.state.isSharingScreen || this.disposed) return;
+        if (this.previewScreenStream) {
+            // A preview is waiting for the user's Go Live / Cancel decision.
+            throw new Error('A screen preview is already waiting — go live or cancel it first.');
+        }
+        if (!this.state.isConnected || !this.state.isPublishing) {
+            throw new Error('Join as a publisher before sharing your screen.');
+        }
+        let stream: MediaStream;
+        try {
+            stream = await navigator.mediaDevices.getDisplayMedia({
+                video: true,
+                // System/tab audio: the browser only includes it when the
+                // user picks a tab and ticks "Share tab audio" (or the OS
+                // provides loopback). Absent on some platforms — handled below.
+                audio: true,
+            });
+        } catch (err) {
+            // User cancelled the picker — not an error worth surfacing.
+            if (err instanceof DOMException && err.name === 'NotAllowedError') {
+                this.log('screen share picker cancelled');
+                return;
+            }
+            throw err;
+        }
+        await this.publishScreenStream(stream);
     }
 
     async stopScreenShare(): Promise<void> {
@@ -884,6 +1032,7 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
             try { t.stop(); } catch { /* ignore */ }
         });
         this.screenStream = null;
+        this.screenSharePaused = false;
         // Only flip state if we were actually sharing (onended can race).
         if (this.state.isSharingScreen) {
             this.updateState({ localScreenTrack: null, isSharingScreen: false, isSharingScreenAudio: false });

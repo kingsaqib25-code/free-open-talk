@@ -31,6 +31,7 @@ import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { cn } from '@/lib/design-system';
 import { Button, Input, Card } from '@/components/ui';
+import { getVoiceService, type VoiceState, type P2PVoiceService } from '@/lib/services/p2p';
 import {
     Clapperboard,
     Play,
@@ -42,6 +43,9 @@ import {
     Users,
     Check,
     Clock,
+    Search,
+    Monitor,
+    MonitorOff,
 } from '@/components/ui/icons';
 
 /* ------------------------------------------------------------------ */
@@ -400,7 +404,6 @@ export function WatchPartyHeaderButton() {
 export function WatchPartyStartModal() {
     const { startOpen, setStartOpen, startYouTube, startFile } = useWatchParty();
     const [tab, setTab] = useState<'youtube' | 'file'>('youtube');
-    const [url, setUrl] = useState('');
     const [file, setFile] = useState<File | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
@@ -410,16 +413,7 @@ export function WatchPartyStartModal() {
     const close = () => {
         setStartOpen(false);
         setError(null);
-        setUrl('');
         setFile(null);
-    };
-
-    const handleYouTube = async () => {
-        setBusy(true);
-        setError(null);
-        const err = await startYouTube(url);
-        setBusy(false);
-        if (err) setError(err);
     };
 
     const handleFile = async () => {
@@ -474,37 +468,22 @@ export function WatchPartyStartModal() {
                                     : 'text-text-tertiary hover:bg-surface-hover'
                             )}
                         >
-                            {t === 'youtube' ? 'YouTube link' : 'My own file'}
+                            {t === 'youtube' ? 'YouTube' : 'My own file'}
                         </button>
                     ))}
                 </div>
 
                 {tab === 'youtube' ? (
-                    <div className="space-y-3">
-                        <Input
-                            placeholder="Paste a YouTube link…"
-                            value={url}
-                            onChange={(e) => setUrl(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleYouTube();
-                            }}
-                        />
-                        <p className="text-xs text-text-tertiary">
-                            Everyone streams it from YouTube on their own
-                            device — in perfect sync, at zero cost to us.
-                        </p>
-                        <Button
-                            onClick={handleYouTube}
-                            disabled={busy || !url.trim()}
-                            fullWidth
-                        >
-                            {busy ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                                'Start watching'
-                            )}
-                        </Button>
-                    </div>
+                    <YouTubePickTab
+                        onPickUrl={async (watchUrl) => {
+                            setBusy(true);
+                            setError(null);
+                            const err = await startYouTube(watchUrl);
+                            setBusy(false);
+                            if (err) setError(err);
+                        }}
+                        busy={busy}
+                    />
                 ) : (
                     <div className="space-y-3">
                         <label className="block">
@@ -1216,4 +1195,740 @@ function WatchReadinessList({
             ))}
         </div>
     );
+}
+
+/* ------------------------------------------------------------------ */
+/* In-app YouTube browser (YouTube Data API v3)                         */
+/*                                                                     */
+/* Zero-cost: the browser calls Google's API directly, no server hop.  */
+/* Tapping a result reuses the existing startYouTube() path, so the    */
+/* synced-playback engine, late-joiner snap and embed fallback are     */
+/* completely untouched.                                               */
+/*                                                                     */
+/* The key is NEVER in the code — it comes from                        */
+/* NEXT_PUBLIC_YOUTUBE_API_KEY (set in Vercel env). No key → the old    */
+/* link-paste UI stays, with a hint.                                   */
+/* ------------------------------------------------------------------ */
+
+/** Public browser key — safe to expose, restricted to the site in GCP. */
+const YOUTUBE_API_KEY =
+    typeof process !== 'undefined'
+        ? (process.env.NEXT_PUBLIC_YOUTUBE_API_KEY ?? '').trim()
+        : '';
+
+interface YouTubeSearchResult {
+    videoId: string;
+    title: string;
+    channel: string;
+    thumbnail: string;
+    duration: string;
+}
+
+/** "PT1H2M3S" -> "1:02:03", "PT4M20S" -> "4:20". */
+function parseISODuration(iso?: string): string {
+    if (!iso) return '';
+    const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?/);
+    if (!m) return '';
+    const h = Number(m[1] ?? 0);
+    const min = Number(m[2] ?? 0);
+    const s = Math.floor(Number(m[3] ?? 0));
+    const mm = h > 0 ? String(min).padStart(2, '0') : String(min);
+    return h > 0
+        ? `${h}:${mm}:${String(s).padStart(2, '0')}`
+        : `${mm}:${String(s).padStart(2, '0')}`;
+}
+
+/** YouTube titles arrive HTML-escaped ("&amp;"). Decode without innerHTML. */
+function decodeHtmlEntities(s: string): string {
+    return s
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'");
+}
+
+async function searchYouTubeVideos(
+    q: string,
+    signal: AbortSignal
+): Promise<YouTubeSearchResult[]> {
+    const searchUrl = new URL('https://www.googleapis.com/youtube/v3/search');
+    searchUrl.searchParams.set('part', 'snippet');
+    searchUrl.searchParams.set('type', 'video');
+    searchUrl.searchParams.set('maxResults', '12');
+    searchUrl.searchParams.set('q', q);
+    searchUrl.searchParams.set('key', YOUTUBE_API_KEY);
+    const res = await fetch(searchUrl.toString(), { signal });
+    if (!res.ok) {
+        if (res.status === 403)
+            throw new Error(
+                'YouTube blocked this search (API key issue or quota). Paste a link instead.'
+            );
+        throw new Error(`YouTube search failed (HTTP ${res.status}).`);
+    }
+    const data = await res.json();
+    const items: any[] = data.items ?? [];
+    const ids = items
+        .map((i) => i?.id?.videoId)
+        .filter((v): v is string => typeof v === 'string');
+    if (ids.length === 0) return [];
+
+    // One videos.list call for all durations (contentDetails).
+    const durations: Record<string, string> = {};
+    try {
+        const detailsUrl = new URL('https://www.googleapis.com/youtube/v3/videos');
+        detailsUrl.searchParams.set('part', 'contentDetails');
+        detailsUrl.searchParams.set('id', ids.join(','));
+        detailsUrl.searchParams.set('key', YOUTUBE_API_KEY);
+        const dres = await fetch(detailsUrl.toString(), { signal });
+        if (dres.ok) {
+            const ddata = await dres.json();
+            for (const item of ddata.items ?? []) {
+                durations[item.id] = parseISODuration(item.contentDetails?.duration);
+            }
+        }
+    } catch {
+        /* durations stay blank — thumbnails/titles still render */
+    }
+
+    return items.map((i) => ({
+        videoId: i.id.videoId as string,
+        title: decodeHtmlEntities(i.snippet?.title ?? 'Untitled'),
+        channel: decodeHtmlEntities(i.snippet?.channelTitle ?? ''),
+        thumbnail:
+            i.snippet?.thumbnails?.medium?.url ??
+            i.snippet?.thumbnails?.default?.url ??
+            '',
+        duration: durations[i.id.videoId] ?? '',
+    }));
+}
+
+/** Fallback when no API key: the original link-paste UI, plus a hint. */
+function YouTubeLinkFallback({
+    onPickUrl,
+    busy,
+}: {
+    onPickUrl: (watchUrl: string) => Promise<void>;
+    busy: boolean;
+}) {
+    const [url, setUrl] = useState('');
+    const [localBusy, setLocalBusy] = useState(false);
+
+    const go = async () => {
+        setLocalBusy(true);
+        await onPickUrl(url);
+        setLocalBusy(false);
+    };
+
+    return (
+        <div className="space-y-3">
+            <Input
+                placeholder="Paste a YouTube link…"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter') void go();
+                }}
+            />
+            <p className="text-xs text-text-tertiary">
+                Everyone streams it from YouTube on their own device — in
+                perfect sync, at zero cost to us.
+            </p>
+            <p className="text-xs text-amber-300/90">
+                Tip: in-app search unlocks once NEXT_PUBLIC_YOUTUBE_API_KEY is
+                set in the hosting env.
+            </p>
+            <Button
+                onClick={() => void go()}
+                disabled={busy || localBusy || !url.trim()}
+                fullWidth
+            >
+                {busy || localBusy ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                    'Start watching'
+                )}
+            </Button>
+        </div>
+    );
+}
+
+export function YouTubePickTab({
+    onPickUrl,
+    busy,
+}: {
+    onPickUrl: (watchUrl: string) => Promise<void>;
+    busy: boolean;
+}) {
+    const [query, setQuery] = useState('');
+    const [results, setResults] = useState<YouTubeSearchResult[]>([]);
+    const [searching, setSearching] = useState(false);
+    const [searchError, setSearchError] = useState<string | null>(null);
+    const [searchedOnce, setSearchedOnce] = useState(false);
+    const [linkMode, setLinkMode] = useState(false);
+
+    // Debounced live search (~400ms). Aborts the in-flight request on each keystroke.
+    useEffect(() => {
+        const q = query.trim();
+        if (!YOUTUBE_API_KEY || linkMode) return;
+        if (q.length < 2) {
+            setResults([]);
+            setSearchedOnce(false);
+            setSearchError(null);
+            return;
+        }
+        const ctrl = new AbortController();
+        const timer = setTimeout(async () => {
+            setSearching(true);
+            setSearchError(null);
+            try {
+                const items = await searchYouTubeVideos(q, ctrl.signal);
+                setResults(items);
+                setSearchedOnce(true);
+            } catch (e) {
+                if ((e as Error)?.name === 'AbortError') return;
+                setSearchError(
+                    e instanceof Error ? e.message : 'Search failed.'
+                );
+                setSearchedOnce(true);
+            } finally {
+                setSearching(false);
+            }
+        }, 400);
+        return () => {
+            clearTimeout(timer);
+            ctrl.abort();
+        };
+    }, [query, linkMode]);
+
+    // Graceful fallback: no key, or user chose link mode after an error.
+    if (!YOUTUBE_API_KEY || linkMode) {
+        return (
+            <div className="space-y-3">
+                {linkMode && YOUTUBE_API_KEY && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setLinkMode(false);
+                            setSearchError(null);
+                        }}
+                        className="text-xs text-primary-300 hover:underline"
+                    >
+                        ← Back to search
+                    </button>
+                )}
+                <YouTubeLinkFallback onPickUrl={onPickUrl} busy={busy} />
+            </div>
+        );
+    }
+
+    const pick = (r: YouTubeSearchResult) => {
+        void onPickUrl(`https://www.youtube.com/watch?v=${r.videoId}`);
+    };
+
+    return (
+        <div className="space-y-3">
+            <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-tertiary pointer-events-none" />
+                <Input
+                    placeholder="Search YouTube…"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    className="pl-9"
+                    autoFocus
+                />
+            </div>
+
+            {searchError && (
+                <div className="rounded-lg bg-status-error/10 border border-status-error/30 p-3">
+                    <p className="text-xs text-status-error flex items-center gap-1.5">
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                        {searchError}
+                    </p>
+                    <button
+                        type="button"
+                        onClick={() => setLinkMode(true)}
+                        className="mt-1.5 text-xs text-primary-300 hover:underline"
+                    >
+                        Paste a link instead →
+                    </button>
+                </div>
+            )}
+
+            <div className="max-h-[320px] overflow-y-auto space-y-1.5 pr-0.5">
+                {searching && (
+                    <div className="flex items-center justify-center gap-2 py-8 text-text-tertiary">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        <span className="text-sm">Searching…</span>
+                    </div>
+                )}
+                {!searching && searchedOnce && results.length === 0 && !searchError && (
+                    <p className="text-sm text-text-tertiary text-center py-8">
+                        No videos found — try different words.
+                    </p>
+                )}
+                {!searching && !searchedOnce && (
+                    <p className="text-sm text-text-tertiary text-center py-8">
+                        Type to search YouTube — tap a result and everyone
+                        starts watching in sync.
+                    </p>
+                )}
+                {results.map((r) => (
+                    <button
+                        key={r.videoId}
+                        type="button"
+                        onClick={() => pick(r)}
+                        disabled={busy}
+                        className="w-full flex gap-3 p-2 rounded-xl hover:bg-surface-hover transition-colors text-left disabled:opacity-60"
+                    >
+                        <span className="relative shrink-0 w-[120px] aspect-video rounded-lg overflow-hidden bg-surface-default">
+                            {r.thumbnail ? (
+                                <img
+                                    src={r.thumbnail}
+                                    alt=""
+                                    className="w-full h-full object-cover"
+                                    loading="lazy"
+                                />
+                            ) : (
+                                <span className="w-full h-full flex items-center justify-center">
+                                    <Clapperboard className="h-5 w-5 text-text-tertiary" />
+                                </span>
+                            )}
+                            {r.duration && (
+                                <span className="absolute bottom-1 right-1 text-[10px] font-medium bg-black/80 text-white px-1 py-0.5 rounded">
+                                    {r.duration}
+                                </span>
+                            )}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-medium text-text-primary line-clamp-2 leading-snug">
+                                {r.title}
+                            </span>
+                            {r.channel && (
+                                <span className="block text-xs text-text-tertiary mt-1 truncate">
+                                    {r.channel}
+                                </span>
+                            )}
+                        </span>
+                    </button>
+                ))}
+            </div>
+
+            <p className="text-xs text-text-tertiary">
+                Everyone streams from YouTube on their own device — in perfect
+                sync, at zero cost to us.
+            </p>
+        </div>
+    );
+}
+
+/* ------------------------------------------------------------------ */
+/* Screen share ADVANCED (beyond free4talk)                              */
+/*                                                                     */
+/* Three upgrades over the plain picker:                               */
+/*  (a) Preview-before-live: capture first, show "what everyone will   */
+/*      see" in a modal, publish to peers only after Go Live.           */
+/*  (b) Viewers pop the shared screen into Picture-in-Picture.          */
+/*  (c) The host pauses the share without stopping it (track.enabled   */
+/*      toggle); viewers are notified and see a paused banner.          */
+/*                                                                     */
+/* Mesh side lives in lib/services/p2p/mesh.ts (screen-share functions */
+/* only): beginScreenSharePreview / publishScreenSharePreview /         */
+/* cancelScreenSharePreview / setScreenSharePaused, with               */
+/* 'screen-share-preview' and 'screen-share-paused' events. The paused  */
+/* flag rides on the existing track-meta signal — zero extra cost.     */
+/*                                                                     */
+/* Mounting (parent wires these into the room UI):                     */
+/*   - <ScreenSharePreviewModal />  → anywhere inside the room layout   */
+/*     (next to <WatchPartyStartModal />). It appears on its own when   */
+/*     a preview is captured.                                          */
+/*   - <ScreenShareShareButton />   → drop-in REPLACEMENT for the raw   */
+/*     share button in voice-panel (captures preview first).            */
+/*   - <ScreenShareHostControls /> → next to the share button: pause /  */
+/*     resume + stop while a share is live.                            */
+/*   - <RemoteScreenPiPButton stream /> → on each remote screen tile    */
+/*     (voice-panel RemoteTile): viewer PiP with fallback message.     */
+/* ------------------------------------------------------------------ */
+
+function getShareService(): P2PVoiceService | null {
+    try {
+        return getVoiceService();
+    } catch {
+        return null;
+    }
+}
+
+/** Live mirror of the mesh VoiceState, without needing VoiceProvider. */
+function useVoiceServiceState(): VoiceState | null {
+    const [state, setState] = useState<VoiceState | null>(null);
+    useEffect(() => {
+        const svc = getShareService();
+        if (!svc) return;
+        const off = svc.on('state-changed', (s: VoiceState) => setState(s));
+        return () => {
+            off();
+        };
+    }, []);
+    return state;
+}
+
+/* ---------------- (a) Preview-before-live ---------------- */
+
+/**
+ * Drop-in share button: opens the OS picker, then shows the preview
+ * modal (Go Live / Cancel). Nothing reaches peers until Go Live.
+ * Replaces the raw startScreenShare() button in voice-panel.
+ */
+export function ScreenShareShareButton({ className }: { className?: string }) {
+    const vs = useVoiceServiceState();
+    const [picking, setPicking] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const sharing = vs?.isSharingScreen ?? false;
+    const canShare = (vs?.isConnected ?? false) && (vs?.isPublishing ?? true);
+
+    const handle = async () => {
+        const svc = getShareService();
+        if (!svc) return;
+        setError(null);
+        try {
+            if (sharing) {
+                await svc.stopScreenShare();
+                return;
+            }
+            setPicking(true);
+            // Modal appears via the 'screen-share-preview' event; null =
+            // the user cancelled the picker (nothing to show).
+            await svc.beginScreenSharePreview();
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Could not share screen.');
+        } finally {
+            setPicking(false);
+        }
+    };
+
+    return (
+        <span className={cn('inline-flex flex-col items-center', className)}>
+            <Button
+                size="icon"
+                variant={sharing ? 'secondary' : 'outline'}
+                onClick={() => void handle()}
+                disabled={picking || !canShare}
+                aria-label={sharing ? 'Stop sharing' : 'Share screen'}
+                title={sharing ? 'Stop sharing' : 'Share screen (preview first)'}
+                className={cn(sharing && 'text-amber-300')}
+            >
+                {picking ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                ) : sharing ? (
+                    <MonitorOff className="h-5 w-5" />
+                ) : (
+                    <Monitor className="h-5 w-5" />
+                )}
+            </Button>
+            {error && (
+                <span className="mt-1 text-[11px] text-status-error max-w-[140px] text-center">
+                    {error}
+                </span>
+            )}
+        </span>
+    );
+}
+
+/**
+ * The preview modal: "this is exactly what everyone will see."
+ * Go Live publishes to peers; Cancel discards the capture.
+ * Renders itself whenever a preview is held — no props needed.
+ */
+export function ScreenSharePreviewModal() {
+    const [preview, setPreview] = useState<MediaStream | null>(null);
+    const [goingLive, setGoingLive] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const videoRef = useRef<HTMLVideoElement | null>(null);
+
+    useEffect(() => {
+        const svc = getShareService();
+        if (!svc) return;
+        const off = svc.on(
+            'screen-share-preview',
+            (stream: MediaStream | null) => {
+                setPreview(stream);
+                setError(null);
+                setGoingLive(false);
+            }
+        );
+        return () => {
+            off();
+        };
+    }, []);
+
+    useEffect(() => {
+        const v = videoRef.current;
+        if (!v) return;
+        if (preview) {
+            v.srcObject = preview;
+            void v.play().catch(() => {});
+        } else {
+            v.srcObject = null;
+        }
+    }, [preview]);
+
+    if (!preview) return null;
+
+    const goLive = async () => {
+        const svc = getShareService();
+        if (!svc) return;
+        setGoingLive(true);
+        setError(null);
+        try {
+            await svc.publishScreenSharePreview();
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Could not go live.');
+            setGoingLive(false);
+        }
+    };
+    const cancel = () => getShareService()?.cancelScreenSharePreview();
+
+    return (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-4">
+            <Card className="w-full max-w-3xl p-0 overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-surface-border">
+                    <h2 className="font-semibold text-text-primary flex items-center gap-2">
+                        <Monitor className="h-5 w-5 text-amber-300" />
+                        Preview — this is what everyone will see
+                    </h2>
+                    <button
+                        type="button"
+                        onClick={cancel}
+                        className="p-1.5 rounded-lg hover:bg-surface-hover text-text-tertiary"
+                        aria-label="Cancel screen share"
+                    >
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+                <div className="relative bg-black aspect-video">
+                    <video
+                        ref={videoRef}
+                        className="absolute inset-0 w-full h-full"
+                        muted
+                        playsInline
+                    />
+                </div>
+                {error && (
+                    <p className="px-4 pt-3 text-sm text-status-error flex items-center gap-1.5">
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        {error}
+                    </p>
+                )}
+                <div className="flex gap-3 px-4 py-4">
+                    <Button
+                        variant="outline"
+                        onClick={cancel}
+                        disabled={goingLive}
+                        fullWidth
+                    >
+                        Cancel
+                    </Button>
+                    <Button onClick={() => void goLive()} disabled={goingLive} fullWidth>
+                        {goingLive ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                            'Go Live'
+                        )}
+                    </Button>
+                </div>
+                <p className="px-4 pb-4 text-xs text-text-tertiary">
+                    Nothing is shared until you press Go Live. Close private
+                    tabs first — the preview is your last check.
+                </p>
+            </Card>
+        </div>
+    );
+}
+
+/* ---------------- (c) Host pause / resume ---------------- */
+
+/**
+ * Compact host bar while a share is live: Pause/Resume (no reconnect
+ * needed) + Stop. Mount next to the share button.
+ */
+export function ScreenShareHostControls({ className }: { className?: string }) {
+    const vs = useVoiceServiceState();
+    const [paused, setPaused] = useState(false);
+
+    useEffect(() => {
+        const svc = getShareService();
+        if (!svc) return;
+        setPaused(svc.getScreenSharePaused());
+        const off = svc.on(
+            'screen-share-paused',
+            (deviceId: string | null, p: boolean) => {
+                if (deviceId == null) setPaused(p);
+            }
+        );
+        return () => {
+            off();
+        };
+    }, []);
+
+    if (!vs?.isSharingScreen) return null;
+
+    const toggle = () => getShareService()?.setScreenSharePaused(!paused);
+    const stop = () => {
+        void getShareService()
+            ?.stopScreenShare()
+            .catch(() => {});
+    };
+
+    return (
+        <div
+            className={cn(
+                'inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30',
+                className
+            )}
+        >
+            <span className="text-xs font-medium text-amber-300 flex items-center gap-1.5">
+                <span
+                    className={cn(
+                        'h-2 w-2 rounded-full',
+                        paused ? 'bg-amber-400' : 'bg-red-500 animate-pulse'
+                    )}
+                />
+                {paused ? 'Share paused' : 'Sharing screen'}
+            </span>
+            <button
+                type="button"
+                onClick={toggle}
+                className="p-1.5 rounded-lg hover:bg-amber-500/20 text-amber-200 transition-colors"
+                title={paused ? 'Resume sharing' : 'Pause sharing (keeps the connection)'}
+                aria-label={paused ? 'Resume screen share' : 'Pause screen share'}
+            >
+                {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+            </button>
+            <button
+                type="button"
+                onClick={stop}
+                className="p-1.5 rounded-lg hover:bg-status-error/20 text-status-error transition-colors"
+                title="Stop sharing"
+                aria-label="Stop screen share"
+            >
+                <X className="h-4 w-4" />
+            </button>
+        </div>
+    );
+}
+
+/* ---------------- (b) Viewer Picture-in-Picture ---------------- */
+
+/**
+ * Pop any shared-screen MediaStream into a floating PiP window.
+ * Returns an error message (shown to the viewer), or null on success.
+ */
+export async function popScreenIntoPiP(stream: MediaStream): Promise<string | null> {
+    try {
+        if (typeof document === 'undefined' || typeof window === 'undefined') {
+            return 'Picture-in-picture is not available here.';
+        }
+        const pipEnabled = (
+            document as Document & { pictureInPictureEnabled?: boolean }
+        ).pictureInPictureEnabled;
+        if (pipEnabled === false) {
+            return 'Picture-in-picture is not supported on this browser.';
+        }
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        video.muted = true;
+        video.playsInline = true;
+        // Kept in the DOM (invisible) so Safari-class browsers accept PiP.
+        video.style.cssText =
+            'position:fixed;left:-9999px;top:0;width:2px;height:2px;opacity:0.01;pointer-events:none;';
+        document.body.appendChild(video);
+        try {
+            await video.play();
+            await video.requestPictureInPicture();
+        } catch (e) {
+            video.remove();
+            throw e;
+        }
+        video.addEventListener('leavepictureinpicture', () => video.remove(), {
+            once: true,
+        });
+        return null;
+    } catch (e) {
+        return e instanceof Error
+            ? e.message
+            : 'Could not open picture-in-picture.';
+    }
+}
+
+/**
+ * Viewer button for a remote shared screen: pops it into PiP.
+ * Mount on each remote screen tile (voice-panel RemoteTile) with the
+ * tile's screen stream. Shows a plain fallback message when PiP fails.
+ */
+export function RemoteScreenPiPButton({
+    stream,
+    className,
+}: {
+    stream: MediaStream | null;
+    className?: string;
+}) {
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    if (!stream) return null;
+
+    const handle = async () => {
+        setBusy(true);
+        setError(null);
+        const err = await popScreenIntoPiP(stream);
+        setBusy(false);
+        if (err) setError(err);
+    };
+
+    return (
+        <span className={cn('inline-flex flex-col items-center', className)}>
+            <button
+                type="button"
+                onClick={() => void handle()}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-200 text-xs font-medium transition-colors disabled:opacity-60"
+                title="Pop the shared screen into a floating window"
+            >
+                {busy ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                    <Monitor className="h-3.5 w-3.5" />
+                )}
+                Pop out
+            </button>
+            {error && (
+                <span className="mt-1 text-[11px] text-status-error max-w-[180px] text-center">
+                    {error}
+                </span>
+            )}
+        </span>
+    );
+}
+
+/**
+ * Whether a remote sharer currently has their screen paused (host used
+ * pause, not stop). Pair with a "Paused" badge on the remote screen tile.
+ */
+export function useRemoteScreenPaused(deviceId: string): boolean {
+    const [paused, setPaused] = useState(false);
+    useEffect(() => {
+        const svc = getShareService();
+        if (!svc) return;
+        const off = svc.on(
+            'screen-share-paused',
+            (from: string | null, p: boolean) => {
+                if (from === deviceId) setPaused(p);
+            }
+        );
+        return () => {
+            off();
+        };
+    }, [deviceId]);
+    return paused;
 }
