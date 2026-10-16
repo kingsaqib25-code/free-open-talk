@@ -24,6 +24,10 @@ export default defineSchema({
     participantCount: v.number(),
     lastActivityAt: v.number(),
     welcomeMessage: v.optional(v.string()),
+    // Room hygiene: set when the last participant leaves; cleared when
+    // anyone rejoins. The cron deletes the room only after the grace
+    // period (15 min) with nobody inside — the owner may step out briefly.
+    emptySince: v.optional(v.number()),
   })
     .index("by_language", ["language"])
     .index("by_activity", ["lastActivityAt"]),
@@ -43,9 +47,27 @@ export default defineSchema({
     // Watch Party (Phase 6): in "file" mode the participant must pick the
     // same local file on their own device before they can watch in sync.
     watchReady: v.optional(v.boolean()),
+    // Live activity presence: what this participant is doing right now.
+    // Updated via the heartbeat `state`. Defaults to idle/talking.
+    activity: v.optional(
+      v.object({
+        kind: v.union(
+          v.literal("idle"),
+          v.literal("talking"),
+          v.literal("watching"),
+          v.literal("sharing"),
+          v.literal("whiteboard"),
+          v.literal("gaming"),
+          v.literal("notes")
+        ),
+        label: v.optional(v.string()), // e.g. media title
+        updatedAt: v.number(),
+      })
+    ),
   })
     .index("by_room", ["roomId"])
-    .index("by_room_device", ["roomId", "deviceId"]),
+    .index("by_room_device", ["roomId", "deviceId"])
+    .index("by_device", ["deviceId"]),
 
   messages: defineTable({
     roomId: v.id("rooms"),
@@ -205,4 +227,18 @@ export default defineSchema({
     updatedAt: v.number(),
     byDeviceId: v.string(),
   }).index("by_room", ["roomId"]),
+
+  // Friend / follow system (guest-friendly: identity = deviceId, no accounts).
+  // A follows B => A gets a Web Push when B comes online (rate-limited).
+  follows: defineTable({
+    followerDeviceId: v.string(), // A — the one who follows
+    followingDeviceId: v.string(), // B — the one being followed
+    followerNickname: v.string(),
+    followingNickname: v.string(), // snapshot for the Friends list
+    createdAt: v.number(),
+    // Rate limit for "X is online" pushes: max 1 per 30 min per pair.
+    lastOnlineNotifAt: v.optional(v.number()),
+  })
+    .index("by_follower", ["followerDeviceId"])
+    .index("by_following", ["followingDeviceId"]),
 });

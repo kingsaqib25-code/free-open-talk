@@ -9,6 +9,8 @@
  */
 
 import type * as chat from "../chat.js";
+import type * as crons from "../crons.js";
+import type * as follows from "../follows.js";
 import type * as moderation from "../moderation.js";
 import type * as presence from "../presence.js";
 import type * as push from "../push.js";
@@ -27,6 +29,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   chat: typeof chat;
+  crons: typeof crons;
+  follows: typeof follows;
   moderation: typeof moderation;
   presence: typeof presence;
   push: typeof push;

@@ -1,7 +1,11 @@
-import { query, mutation } from "./_generated/server";
+import { query, mutation, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import { HEARTBEAT_TIMEOUT_MS } from "./rooms";
 import { accrueStreakHeartbeat } from "./streaks";
+
+/** Considered "came online" if no heartbeat for this long. */
+const OFFLINE_THRESHOLD_MS = 5 * 60_000;
 
 /**
  * Presence: join / heartbeat / leave.
@@ -49,10 +53,21 @@ export const join = mutation({
       )
       .first();
     if (existing) {
+      const wasOffline = now - existing.lastHeartbeat > OFFLINE_THRESHOLD_MS;
       await ctx.db.patch(existing._id, {
         nickname: args.nickname.slice(0, 30),
         lastHeartbeat: now,
       });
+      // Rejoining clears the empty-room grace stamp (see leave).
+      if (room.emptySince !== undefined) {
+        await ctx.db.patch(args.roomId, { emptySince: undefined });
+      }
+      if (wasOffline) {
+        await ctx.scheduler.runAfter(0, internal.follows.notifyOnline, {
+          deviceId: args.deviceId,
+          nickname: args.nickname.slice(0, 30),
+        });
+      }
       return { alreadyIn: true, participantId: existing._id };
     }
 
@@ -85,7 +100,24 @@ export const join = mutation({
     await ctx.db.patch(args.roomId, {
       participantCount: live.length + 1,
       lastActivityAt: now,
+      // Rejoining clears the empty-room grace stamp (see leave).
+      emptySince: undefined,
     });
+    // Brand-new presence row: notify followers only if this device wasn't
+    // live anywhere else already (fresh online, not a second tab).
+    const otherLive = await ctx.db
+      .query("participants")
+      .withIndex("by_device", (q) => q.eq("deviceId", args.deviceId))
+      .collect();
+    const elsewhereLive = otherLive.some(
+      (p) => p.roomId !== args.roomId && p.lastHeartbeat > now - HEARTBEAT_TIMEOUT_MS
+    );
+    if (!elsewhereLive) {
+      await ctx.scheduler.runAfter(0, internal.follows.notifyOnline, {
+        deviceId: args.deviceId,
+        nickname: args.nickname.slice(0, 30),
+      });
+    }
     // Return the peers already here so the newcomer knows who to expect
     // offers from (existing peers initiate — avoids SDP glare).
     return {
@@ -113,6 +145,22 @@ export const heartbeat = mutation({
         // Watch Party (Phase 6): true once the participant picked the
         // matching local file in "file" mode.
         watchReady: v.optional(v.boolean()),
+        // Live activity presence: what the participant is doing now.
+        activity: v.optional(
+          v.object({
+            kind: v.union(
+              v.literal("idle"),
+              v.literal("talking"),
+              v.literal("watching"),
+              v.literal("sharing"),
+              v.literal("whiteboard"),
+              v.literal("gaming"),
+              v.literal("notes")
+            ),
+            label: v.optional(v.string()),
+            updatedAt: v.number(),
+          })
+        ),
       })
     ),
   },
@@ -125,9 +173,18 @@ export const heartbeat = mutation({
       .first();
     if (!p) return;
     const now = Date.now();
+    // Came-online detection for follower notifications: no heartbeat for a
+    // while means the user was offline; this beat is their return.
+    const wasOffline = now - p.lastHeartbeat > OFFLINE_THRESHOLD_MS;
     const patch: any = { lastHeartbeat: now };
     if (args.state) Object.assign(patch, args.state);
     await ctx.db.patch(p._id, patch);
+    if (wasOffline) {
+      await ctx.scheduler.runAfter(0, internal.follows.notifyOnline, {
+        deviceId: args.deviceId,
+        nickname: p.nickname,
+      });
+    }
     // Phase 8 (engagement): cheap streak accounting — accrues today's
     // minutes from heartbeat gaps; writes the streaks row only when the
     // minute bucket changes (guarded inside accrueStreakHeartbeat).
@@ -158,10 +215,23 @@ export const leave = mutation({
     }
     const room = await ctx.db.get(args.roomId);
     if (room) {
-      await ctx.db.patch(args.roomId, {
+      const liveCount = (
+        await ctx.db
+          .query("participants")
+          .withIndex("by_room", (q) => q.eq("roomId", args.roomId))
+          .collect()
+      ).filter((x) => Date.now() - x.lastHeartbeat < HEARTBEAT_TIMEOUT_MS)
+        .length;
+      const patch: any = {
         participantCount: Math.max(0, room.participantCount - 1),
         lastActivityAt: Date.now(),
-      });
+      };
+      // Room hygiene: nobody left inside → stamp emptySince. The cron
+      // deletes the room only after the 15-minute grace period; anyone
+      // rejoining clears the stamp (see join). Never delete instantly —
+      // the owner may step out briefly and come back.
+      if (liveCount === 0) patch.emptySince = Date.now();
+      await ctx.db.patch(args.roomId, patch);
     }
   },
 });
@@ -236,7 +306,7 @@ export const setRole = mutation({
   },
 });
 
-/** Cron: drop participants whose heartbeat went stale. */export const cleanupStale = mutation({
+/** Cron: drop participants whose heartbeat went stale. */export const cleanupStale = internalMutation({
   args: {},
   handler: async (ctx) => {
     const cutoff = Date.now() - HEARTBEAT_TIMEOUT_MS;

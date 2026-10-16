@@ -1,8 +1,14 @@
-import { query, mutation } from "./_generated/server";
+import { query, mutation, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
 const HEARTBEAT_TIMEOUT_MS = 30_000;
-const EMPTY_ROOM_TTL_MS = 5 * 60_000;
+/**
+ * Room hygiene: when the last participant leaves, the room is NOT deleted
+ * instantly — the owner may step out briefly and come back. presence.leave
+ * stamps `emptySince`; the cron deletes the room only after this grace
+ * period with nobody inside. Anyone rejoining clears emptySince.
+ */
+const EMPTY_ROOM_GRACE_MS = 15 * 60_000;
 
 function isBannedCheck(
   bans: Array<{ roomId?: any; expiresAt: number }>,
@@ -101,29 +107,48 @@ export const create = mutation({
   },
 });
 
-/** Remove rooms nobody is in anymore (called by cron). */
-export const cleanupEmpty = mutation({
+/**
+ * Delete every doc belonging to a room. Used by presence.leave (never —
+ * leave only stamps emptySince) and by cleanupEmpty below.
+ */
+async function deleteRoomCascade(ctx: any, roomId: any) {
+  const byRoom = async (table: string) =>
+    await ctx.db
+      .query(table)
+      .withIndex("by_room", (q: any) => q.eq("roomId", roomId))
+      .collect();
+  for (const table of [
+    "participants",
+    "signals",
+    "messages",
+    "whiteboard",
+    "tictactoe",
+    "sharedMedia",
+    "notepad",
+    "watchParty",
+  ]) {
+    for (const doc of await byRoom(table)) await ctx.db.delete(doc._id);
+  }
+  await ctx.db.delete(roomId);
+}
+
+/** Remove rooms empty past the grace period (called by cron every 2 min). */
+export const cleanupEmpty = internalMutation({
   args: {},
   handler: async (ctx) => {
-    const cutoff = Date.now() - EMPTY_ROOM_TTL_MS;
+    const cutoff = Date.now() - EMPTY_ROOM_GRACE_MS;
     const stale = await ctx.db
       .query("rooms")
-      .withIndex("by_activity", (q) => q.lt("lastActivityAt", cutoff))
+      .withIndex("by_activity")
       .collect();
     let removed = 0;
     for (const room of stale) {
-      if (room.participantCount === 0) {
-        const participants = await ctx.db
-          .query("participants")
-          .withIndex("by_room", (q) => q.eq("roomId", room._id))
-          .collect();
-        for (const p of participants) await ctx.db.delete(p._id);
-        const signals = await ctx.db
-          .query("signals")
-          .withIndex("by_room", (q) => q.eq("roomId", room._id))
-          .collect();
-        for (const s of signals) await ctx.db.delete(s._id);
-        await ctx.db.delete(room._id);
+      if (
+        room.emptySince !== undefined &&
+        room.emptySince < cutoff &&
+        room.participantCount === 0
+      ) {
+        await deleteRoomCascade(ctx, room._id);
         removed++;
       }
     }
