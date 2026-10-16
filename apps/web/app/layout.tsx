@@ -63,8 +63,8 @@ export default function RootLayout({
       >
         <Providers>
           {children}
+          <PwaBootstrap />
         </Providers>
-        <PwaBootstrap />
         <Toaster
           position="bottom-right"
           theme="dark"
