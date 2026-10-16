@@ -22,16 +22,16 @@ export function Toaster() {
             position="top-right"
             toastOptions={{
                 classNames: {
-                    toast: 'bg-pink-200 border border-white/10 shadow-xl rounded-xl backdrop-blur-none',
-                    title: 'text-white font-medium',
-                    description: 'text-gray-400 text-sm',
-                    actionButton: 'bg-violet-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-violet-500',
-                    cancelButton: 'bg-white/5 text-gray-400 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-white/10',
-                    closeButton: 'text-gray-500 hover:text-white',
+                    toast: 'bg-surface-default border border-surface-border shadow-xl rounded-xl backdrop-blur-none',
+                    title: 'text-text-primary font-medium',
+                    description: 'text-text-secondary text-sm',
+                    actionButton: 'bg-primary-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-primary-500',
+                    cancelButton: 'bg-surface-hover text-text-secondary px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-surface-active',
+                    closeButton: 'text-text-tertiary hover:text-text-primary',
                     success: 'border-l-4 border-l-emerald-500',
                     error: 'border-l-4 border-l-red-500',
                     warning: 'border-l-4 border-l-amber-500',
-                    info: 'border-l-4 border-l-blue-500',
+                    info: 'border-l-4 border-l-status-info',
                 },
             }}
             expand={false}

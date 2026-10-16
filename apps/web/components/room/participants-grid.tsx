@@ -73,11 +73,17 @@ export const ParticipantsGrid = memo(function ParticipantsGrid({
         onTransferOwnership?.(userId);
     }, [onTransferOwnership]);
 
-    // Determine grid columns based on participant count
+    // Determine grid columns based on participant count.
+    // Stage mode (<= 4 tiles): cinematic 2x2 that fills the viewport.
+    const isCinematic = useMemo(() => {
+        const total = participants.length + (showEmptySlots ? emptySlotCount : 0);
+        return total <= 4;
+    }, [participants.length, showEmptySlots, emptySlotCount]);
+
     const gridCols = useMemo(() => {
         const total = participants.length + (showEmptySlots ? emptySlotCount : 0);
         if (total <= 2) return 'grid-cols-2';
-        if (total <= 4) return 'grid-cols-2 sm:grid-cols-2';
+        if (total <= 4) return 'grid-cols-2 grid-rows-2 auto-rows-fr';
         if (total <= 6) return 'grid-cols-2 sm:grid-cols-3';
         if (total <= 9) return 'grid-cols-3 sm:grid-cols-3';
         return 'grid-cols-3 sm:grid-cols-4 md:grid-cols-4';
@@ -86,7 +92,8 @@ export const ParticipantsGrid = memo(function ParticipantsGrid({
     return (
         <div className={cn('flex-1 overflow-y-auto p-4', className)}>
             <div className={cn(
-                'grid gap-3 sm:gap-4 max-w-4xl mx-auto',
+                'grid gap-3 sm:gap-4 mx-auto h-full',
+                isCinematic ? 'max-w-none min-h-[62vh]' : 'max-w-5xl',
                 gridCols
             )}>
                 {sortedParticipants.map((participant) => (
@@ -97,12 +104,14 @@ export const ParticipantsGrid = memo(function ParticipantsGrid({
                         isViewerOwner={isCurrentUserOwner}
                         onKick={handleKick}
                         onTransferOwnership={handleTransferOwnership}
+                        size={isCinematic ? 'lg' : 'md'}
+                        shape={isCinematic ? 'cinematic' : 'square'}
                     />
                 ))}
 
                 {/* Empty slots */}
                 {showEmptySlots && Array.from({ length: emptySlotCount }).map((_, i) => (
-                    <EmptySlot key={`empty-${i}`} />
+                    <EmptySlot key={`empty-${i}`} size={isCinematic ? 'lg' : 'md'} />
                 ))}
             </div>
         </div>

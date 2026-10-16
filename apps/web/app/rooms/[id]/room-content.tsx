@@ -227,12 +227,23 @@ export function RoomContent({ roomId }: RoomContentProps) {
             )}
 
             {/* Body */}
-            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-                {/* Left: people + voice placeholder */}
-                <div className="flex-1 p-4 space-y-4 overflow-y-auto">
-                    {/* People in the room */}
-                    <Card>
-                        <div className="flex items-center gap-2 mb-3">
+            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
+                {/* Left: video/voice stage (hero) + people strip */}
+                <div className="flex-1 min-h-0 p-4 lg:p-5 space-y-4 overflow-y-auto flex flex-col">
+                    {/* Voice / video stage (P2P mesh) — the hero: first and dominant */}
+                    <div className="flex-1">
+                        <VoicePanel
+                            roomId={roomId}
+                            roomMode={(room.mode ?? 'voice') as 'voice' | 'stage' | 'private'}
+                            participants={participantList}
+                            deviceId={deviceId}
+                            onMediaStateChange={handleMediaStateChange}
+                        />
+                    </div>
+
+                    {/* People in the room — compact strip below the stage */}
+                    <Card className="shrink-0">
+                        <div className="flex items-center gap-2 mb-2.5">
                             <Users className="h-4 w-4 text-primary-400" />
                             <h2 className="text-sm font-medium text-text-primary">
                                 In this room ({participantList.length})
@@ -241,7 +252,7 @@ export function RoomContent({ roomId }: RoomContentProps) {
                         {participantList.length === 0 ? (
                             <p className="text-sm text-text-tertiary">Joining…</p>
                         ) : (
-                            <div className="flex flex-wrap gap-3">
+                            <div className="flex gap-2 overflow-x-auto pb-1">
                                 {participantList.map((p) => (
                                     <ParticipantMenu
                                         key={p.deviceId}
@@ -255,7 +266,7 @@ export function RoomContent({ roomId }: RoomContentProps) {
                                     >
                                         <button
                                             type="button"
-                                            className="flex items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-surface-hover transition-colors"
+                                            className="flex items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-surface-hover transition-colors shrink-0"
                                             title="More actions"
                                         >
                                             <Avatar
@@ -281,15 +292,6 @@ export function RoomContent({ roomId }: RoomContentProps) {
                             <p className="text-xs text-text-tertiary mt-2">{menuNotice}</p>
                         )}
                     </Card>
-
-                    {/* Voice / video (P2P mesh) */}
-                    <VoicePanel
-                        roomId={roomId}
-                        roomMode={(room.mode ?? 'voice') as 'voice' | 'stage' | 'private'}
-                        participants={participantList}
-                        deviceId={deviceId}
-                        onMediaStateChange={handleMediaStateChange}
-                    />
                 </div>
 
                 {/* Right: chat */}

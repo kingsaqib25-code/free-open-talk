@@ -103,7 +103,7 @@ export const VoiceRoomLayout = memo(function VoiceRoomLayout({
             : 'disconnected';
 
     return (
-        <div className="flex flex-col h-dvh bg-[#1a1f2e] overflow-hidden">
+        <div className="flex flex-col h-dvh bg-background-primary overflow-hidden">
             {/* Top Section: Header + Controls */}
             <div className="shrink-0 relative z-20">
                 {/* Compact Header */}
@@ -136,7 +136,7 @@ export const VoiceRoomLayout = memo(function VoiceRoomLayout({
             {/* Main Content Area - Large empty canvas */}
             <main className="flex-1 relative overflow-hidden">
                 {/* Background gradient */}
-                <div className="absolute inset-0 bg-linear-to-b from-[#1a1f2e] via-[#1e2433] to-[#1a1f2e]" />
+                <div className="absolute inset-0 bg-linear-to-b from-background-primary via-background-secondary to-background-primary" />
 
                 {/* Future content area placeholder */}
                 <div className="relative h-full flex items-center justify-center">
@@ -259,7 +259,7 @@ const CompactHeader = memo(function CompactHeader({
                             <MoreVertical className="h-5 w-5" />
                         </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48 bg-[#1a1a2e] border-white/10">
+                    <DropdownMenuContent align="end" className="w-48 bg-surface-default border-surface-border">
                         <DropdownMenuItem onClick={onCopyLink} className="text-gray-300 hover:text-white sm:hidden">
                             <Share2 className="mr-2 h-4 w-4" />
                             {copied ? 'Copied!' : 'Share Link'}
@@ -329,8 +329,8 @@ const ContentPlaceholder = memo(function ContentPlaceholder({
             {participantCount <= 1 ? (
                 // Empty state when alone
                 <>
-                    <div className="w-20 h-20 rounded-2xl bg-violet-500/10 flex items-center justify-center mb-6">
-                        <Users className="h-10 w-10 text-violet-400" />
+                    <div className="w-20 h-20 rounded-2xl bg-primary-500/10 flex items-center justify-center mb-6">
+                        <Users className="h-10 w-10 text-primary-400" />
                     </div>
                     <h3 className="text-xl font-semibold text-white mb-2">
                         Waiting for others
@@ -340,7 +340,7 @@ const ContentPlaceholder = memo(function ContentPlaceholder({
                     </p>
                     <button
                         onClick={onCopyLink}
-                        className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-violet-600 hover:bg-violet-500 rounded-xl transition-colors shadow-lg shadow-violet-600/25"
+                        className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-500 rounded-xl transition-colors shadow-lg shadow-primary-600/25"
                     >
                         <Copy className="h-4 w-4" />
                         Copy Invite Link

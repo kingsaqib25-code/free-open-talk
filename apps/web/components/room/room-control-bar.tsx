@@ -169,7 +169,7 @@ const ControlButton = memo(function ControlButton({
     onClick,
     disabled = false,
     active = false,
-    activeColor = 'bg-blue-600/20 ring-1 ring-blue-500',
+    activeColor = 'bg-primary-600/20 ring-1 ring-primary-500',
     variant = 'default',
     tooltip,
 }: ControlButtonProps) {

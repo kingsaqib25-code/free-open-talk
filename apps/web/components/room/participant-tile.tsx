@@ -33,6 +33,8 @@ export interface ParticipantTileProps {
     onTransferOwnership?: (userId: string) => void;
     /** Size variant */
     size?: 'sm' | 'md' | 'lg';
+    /** Tile shape: square grid tile or cinematic full-bleed stage tile */
+    shape?: 'square' | 'cinematic';
 }
 
 /**
@@ -45,8 +47,10 @@ export const ParticipantTile = memo(function ParticipantTile({
     onKick,
     onTransferOwnership,
     size = 'md',
+    shape = 'square',
 }: ParticipantTileProps) {
     const isParticipantOwner = participant.isOwner;
+    const isCinematic = shape === 'cinematic';
 
     // Memoize display name to avoid recalculation
     const displayName = useMemo(() => {
@@ -60,28 +64,29 @@ export const ParticipantTile = memo(function ParticipantTile({
         return 'online';
     }, [participant.isSpeaking, participant.isMuted]);
 
-    // Memoize size classes
+    // Memoize size classes — avatars are deliberately large (voice rooms
+    // lead with presence, not thumbnails).
     const sizeClasses = useMemo(() => {
         switch (size) {
             case 'sm':
                 return {
                     card: 'p-2',
-                    avatar: 'md' as const,
+                    avatar: 'lg' as const,
                     text: 'text-xs',
                     icon: 'h-3 w-3',
                 };
             case 'lg':
                 return {
-                    card: 'p-4',
-                    avatar: '2xl' as const,
-                    text: 'text-base',
+                    card: 'p-6',
+                    avatar: '3xl' as const,
+                    text: 'text-lg',
                     icon: 'h-5 w-5',
                 };
             default:
                 return {
-                    card: 'p-3',
-                    avatar: 'xl' as const,
-                    text: 'text-sm',
+                    card: 'p-4',
+                    avatar: '2xl' as const,
+                    text: 'text-base',
                     icon: 'h-4 w-4',
                 };
         }
@@ -98,9 +103,13 @@ export const ParticipantTile = memo(function ParticipantTile({
             variant="interactive"
             padding="none"
             className={cn(
-                'aspect-square flex flex-col items-center justify-center gap-2 relative transition-all duration-200',
+                'flex flex-col items-center justify-center gap-2 relative transition-all duration-200',
+                isCinematic
+                    ? 'h-full min-h-[300px] md:min-h-[400px]'
+                    : 'aspect-square',
                 sizeClasses.card,
-                participant.isSpeaking && 'ring-2 ring-voice-speaking ring-offset-2 ring-offset-background-primary'
+                participant.isSpeaking &&
+                    'ring-2 ring-voice-speaking ring-offset-2 ring-offset-background-primary shadow-glow'
             )}
         >
             {/* Owner Crown Badge */}
@@ -156,14 +165,23 @@ export const ParticipantTile = memo(function ParticipantTile({
                 </div>
             )}
 
-            {/* Avatar with speaking indicator */}
-            <Avatar
-                fallback={displayName}
-                src={participant.avatarUrl ?? undefined}
-                size={sizeClasses.avatar}
-                status={avatarStatus}
-                showStatus
-            />
+            {/* Avatar with warm speaking glow */}
+            <div
+                style={
+                    participant.isSpeaking
+                        ? { animation: 'speaking 1.6s ease-in-out infinite' }
+                        : undefined
+                }
+                className="rounded-full"
+            >
+                <Avatar
+                    fallback={displayName}
+                    src={participant.avatarUrl ?? undefined}
+                    size={sizeClasses.avatar}
+                    status={avatarStatus}
+                    showStatus
+                />
+            </div>
 
             {/* Name */}
             <p className={cn(

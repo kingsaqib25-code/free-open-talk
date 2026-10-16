@@ -44,12 +44,12 @@ const ROLE_COLORS = {
         label: 'Owner',
     },
     coOwner: {
-        bg: 'bg-blue-600',
+        bg: 'bg-orange-600',
         text: 'text-white',
         label: 'Co-Owner',
     },
     moderator: {
-        bg: 'bg-purple-600',
+        bg: 'bg-amber-600',
         text: 'text-white',
         label: 'Mod',
     },
@@ -60,18 +60,18 @@ const ROLE_COLORS = {
     },
 };
 
-// Avatar background colors for initials
+// Avatar background colors for initials — warm theme palette
 const AVATAR_COLORS = [
-    'bg-green-600',
-    'bg-blue-600',
-    'bg-purple-600',
-    'bg-pink-600',
     'bg-orange-600',
-    'bg-cyan-600',
-    'bg-indigo-600',
-    'bg-rose-600',
-    'bg-teal-600',
     'bg-amber-600',
+    'bg-yellow-600',
+    'bg-orange-700',
+    'bg-amber-500',
+    'bg-yellow-700',
+    'bg-orange-500',
+    'bg-amber-700',
+    'bg-stone-500',
+    'bg-amber-800',
 ];
 
 /**
@@ -197,7 +197,7 @@ const ParticipantTile = memo(function ParticipantTile({
         <div
             className={cn(
                 'relative flex flex-col items-center group transition-all duration-200',
-                'min-w-[72px] sm:min-w-[80px]',
+                'min-w-[88px] sm:min-w-[96px]',
                 participant.isSpeaking && 'scale-105'
             )}
             onMouseEnter={() => setIsHovered(true)}
@@ -242,9 +242,15 @@ const ParticipantTile = memo(function ParticipantTile({
             {/* Avatar container */}
             <div
                 className={cn(
-                    'relative w-20 h-20 sm:w-[94px] sm:h-[94px] rounded-lg overflow-hidden transition-all duration-200',
-                    participant.isSpeaking && 'ring-2 ring-green-500 ring-offset-2 ring-offset-[#0a0a0f]'
+                    'relative w-24 h-24 sm:w-28 sm:h-28 rounded-lg overflow-hidden transition-all duration-200',
+                    participant.isSpeaking &&
+                        'ring-2 ring-voice-speaking ring-offset-2 ring-offset-background-primary shadow-glow'
                 )}
+                style={
+                    participant.isSpeaking
+                        ? { animation: 'speaking 1.6s ease-in-out infinite' }
+                        : undefined
+                }
             >
                 {/* Avatar with image or initials */}
                 {participant.avatarUrl ? (
@@ -256,7 +262,7 @@ const ParticipantTile = memo(function ParticipantTile({
                 ) : (
                     <div
                         className={cn(
-                            'w-full h-full flex items-center justify-center text-white font-bold text-xl sm:text-2xl',
+                            'w-full h-full flex items-center justify-center text-white font-bold text-2xl sm:text-3xl',
                             avatarColor
                         )}
                     >
@@ -315,7 +321,7 @@ const SpeakingBars = memo(function SpeakingBars({ level }: { level: number }) {
                 return (
                     <div
                         key={i}
-                        className="w-[2px] bg-green-500 rounded-full transition-all duration-75"
+                        className="w-[2px] bg-voice-speaking rounded-full transition-all duration-75"
                         style={{ height: `${height * 100}%` }}
                     />
                 );

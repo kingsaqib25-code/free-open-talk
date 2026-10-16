@@ -407,7 +407,7 @@ const RoomHeader = memo(function RoomHeader({
     copied: boolean;
 }) {
     return (
-        <header className="shrink-0 border-b border-white/5 bg-[#0d0d14]/90 backdrop-blur-xl">
+        <header className="shrink-0 border-b border-white/5 bg-background-primary/90 backdrop-blur-xl">
             <div className="flex items-center justify-between px-4 py-3">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                     <Link
@@ -446,7 +446,7 @@ const RoomHeader = memo(function RoomHeader({
                                 <MoreVertical className="h-5 w-5" />
                             </button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-48 bg-[#1a1a2e] border-white/10">
+                        <DropdownMenuContent align="end" className="w-48 bg-surface-default border-surface-border">
                             <DropdownMenuItem asChild>
                                 <Link href="/" className="flex items-center text-gray-300 hover:text-white">
                                     <LogOut className="mr-2 h-4 w-4" />
@@ -525,15 +525,15 @@ const ParticipantGrid = memo(function ParticipantGrid({
     onTransferOwnership: (userId: string) => void;
 }) {
     const count = participants.length;
-    const gridClass = count === 1 ? 'grid-cols-1 max-w-xs'
-        : count === 2 ? 'grid-cols-2 max-w-lg'
-            : count <= 4 ? 'grid-cols-2 md:grid-cols-2 max-w-2xl'
-                : count <= 6 ? 'grid-cols-2 md:grid-cols-3 max-w-3xl'
-                    : count <= 9 ? 'grid-cols-3 max-w-4xl'
-                        : 'grid-cols-3 md:grid-cols-4 max-w-5xl';
+    const gridClass = count === 1 ? 'grid-cols-1 max-w-sm'
+        : count === 2 ? 'grid-cols-2 max-w-2xl'
+            : count <= 4 ? 'grid-cols-2 md:grid-cols-2 max-w-4xl'
+                : count <= 6 ? 'grid-cols-2 md:grid-cols-3 max-w-5xl'
+                    : count <= 9 ? 'grid-cols-3 max-w-5xl'
+                        : 'grid-cols-3 md:grid-cols-4 max-w-6xl';
 
     return (
-        <div className={cn('grid gap-4 mx-auto', gridClass)}>
+        <div className={cn('grid gap-4 md:gap-6 mx-auto w-full h-full auto-rows-fr items-stretch', gridClass)}>
             {participants.map((participant) => (
                 <ParticipantCard
                     key={participant.id}
@@ -567,10 +567,10 @@ const ParticipantCard = memo(function ParticipantCard({
     return (
         <div
             className={cn(
-                'relative group rounded-2xl p-6 transition-all duration-300',
+                'relative group rounded-2xl p-6 md:p-8 transition-all duration-300',
                 'bg-linear-to-b from-white/3 to-transparent',
                 'border border-white/5',
-                participant.isSpeaking && 'ring-2 ring-emerald-500/50 border-emerald-500/30 bg-emerald-500/5'
+                participant.isSpeaking && 'ring-2 ring-voice-speaking border-voice-speaking/40 bg-voice-speaking/5 shadow-glow'
             )}
         >
             {participant.isOwner && (
@@ -583,7 +583,7 @@ const ParticipantCard = memo(function ParticipantCard({
 
             {isCurrentUser && (
                 <div className="absolute top-3 right-3">
-                    <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-violet-500/20 text-violet-400 border border-violet-500/20">
+                    <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-primary-500/20 text-primary-400 border border-primary-500/20">
                         You
                     </span>
                 </div>
@@ -623,11 +623,18 @@ const ParticipantCard = memo(function ParticipantCard({
                         isMuted={participant.isMuted}
                     />
 
-                    <div className="relative z-10">
+                    <div
+                        className="relative z-10 rounded-full"
+                        style={
+                            participant.isSpeaking
+                                ? { animation: 'speaking 1.6s ease-in-out infinite' }
+                                : undefined
+                        }
+                    >
                         <Avatar
                             fallback={displayName}
                             src={participant.avatarUrl ?? undefined}
-                            size="2xl"
+                            size="3xl"
                             className="border-4 border-[#0a0a0f]"
                         />
                     </div>
@@ -671,13 +678,13 @@ const AudioLevelRing = memo(function AudioLevelRing({
         <div
             className={cn(
                 'absolute inset-0 rounded-full transition-all duration-75',
-                !isMuted && normalizedLevel > 0.01 && 'bg-emerald-500/20'
+                !isMuted && normalizedLevel > 0.01 && 'bg-voice-speaking/20'
             )}
             style={{
                 transform: `scale(${scale})`,
                 opacity,
                 boxShadow: !isMuted && normalizedLevel > 0.01
-                    ? `0 0 ${10 + normalizedLevel * 25}px ${normalizedLevel * 12}px rgba(16, 185, 129, ${0.15 + normalizedLevel * 0.35})`
+                    ? `0 0 ${10 + normalizedLevel * 25}px ${normalizedLevel * 12}px rgba(245, 158, 11, ${0.15 + normalizedLevel * 0.35})`
                     : 'none',
             }}
         />
@@ -824,8 +831,8 @@ const AudioControlBar = memo(function AudioControlBar({
 const EmptyState = memo(function EmptyState({ onCopyLink }: { onCopyLink: () => void }) {
     return (
         <div className="mt-8 p-8 text-center rounded-2xl bg-white/2 border border-white/5 max-w-md mx-auto">
-            <div className="w-14 h-14 rounded-2xl bg-violet-500/10 flex items-center justify-center mx-auto mb-4">
-                <Users className="h-7 w-7 text-violet-400" />
+            <div className="w-14 h-14 rounded-2xl bg-primary-500/10 flex items-center justify-center mx-auto mb-4">
+                <Users className="h-7 w-7 text-primary-400" />
             </div>
             <h3 className="text-lg font-semibold text-white">Waiting for others</h3>
             <p className="text-sm text-gray-400 mt-2 mb-4">
@@ -833,7 +840,7 @@ const EmptyState = memo(function EmptyState({ onCopyLink }: { onCopyLink: () => 
             </p>
             <button
                 onClick={onCopyLink}
-                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-violet-600 hover:bg-violet-500 rounded-xl transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-500 rounded-xl transition-colors"
             >
                 <Copy className="h-4 w-4" />
                 Copy Invite Link
@@ -844,7 +851,7 @@ const EmptyState = memo(function EmptyState({ onCopyLink }: { onCopyLink: () => 
 
 const LoadingScreen = memo(function LoadingScreen({ message }: { message: string }) {
     return (
-        <div className="flex flex-col h-dvh bg-[#0a0a0f]">
+        <div className="flex flex-col h-dvh bg-background-primary">
             <header className="flex items-center px-4 py-3 border-b border-white/5">
                 <Link href="/" className="p-2 -ml-2 rounded-xl hover:bg-white/5 text-gray-400 transition-colors">
                     <ChevronLeft className="h-5 w-5" />
@@ -854,9 +861,9 @@ const LoadingScreen = memo(function LoadingScreen({ message }: { message: string
             <div className="flex-1 flex items-center justify-center">
                 <div className="flex flex-col items-center gap-4">
                     <div className="relative">
-                        <div className="absolute inset-0 rounded-full bg-violet-500/20 animate-ping" />
-                        <div className="relative w-16 h-16 rounded-full bg-violet-500/10 flex items-center justify-center">
-                            <Loader2 className="h-8 w-8 text-violet-500 animate-spin" />
+                        <div className="absolute inset-0 rounded-full bg-primary-500/20 animate-ping" />
+                        <div className="relative w-16 h-16 rounded-full bg-primary-500/10 flex items-center justify-center">
+                            <Loader2 className="h-8 w-8 text-primary-500 animate-spin" />
                         </div>
                     </div>
                     <p className="text-gray-400 font-medium">{message}</p>
@@ -878,7 +885,7 @@ const ErrorScreen = memo(function ErrorScreen({
     const router = useRouter();
 
     return (
-        <div className="flex flex-col h-dvh bg-[#0a0a0f]">
+        <div className="flex flex-col h-dvh bg-background-primary">
             <header className="flex items-center px-4 py-3 border-b border-white/5">
                 <Link href="/" className="p-2 -ml-2 rounded-xl hover:bg-white/5 text-gray-400 transition-colors">
                     <ChevronLeft className="h-5 w-5" />
@@ -903,7 +910,7 @@ const ErrorScreen = memo(function ErrorScreen({
                         </button>
                         <button
                             onClick={onRetry}
-                            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-violet-600 hover:bg-violet-500 rounded-xl transition-colors"
+                            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-500 rounded-xl transition-colors"
                         >
                             <RefreshCw className="h-4 w-4" />
                             Retry {retryCount > 0 && `(${retryCount})`}
