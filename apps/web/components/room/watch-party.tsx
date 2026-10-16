@@ -697,9 +697,7 @@ function SyncPlayer() {
                             } else if (e.data === YT_STATE.PAUSED) {
                                 broadcast('paused', t);
                             } else if (e.data === YT_STATE.ENDED) {
-                                const cur = sessionRef.current;
                                 stopRef.current();
-                                void cur;
                             }
                         },
                         onError: (e: { data: number }) => {
