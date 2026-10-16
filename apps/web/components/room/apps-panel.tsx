@@ -7,6 +7,11 @@ import {
   ScreenShareShareButton,
   useWatchParty,
 } from './watch-party';
+import {
+  DailymotionPickTab,
+  TwitchPickTab,
+  SpotifyPickTab,
+} from './platform-search';
 
 export type AppKey =
   | 'youtube'
@@ -74,34 +79,49 @@ const SECTIONS: { title: string; apps: AppKey[] }[] = [
   },
 ];
 
-/** Platforms that need a paste-a-link / channel input before sharing. */
-const INPUT_APPS: AppKey[] = [
-  'tiktok',
-  'twitch',
-  'vimeo',
-  'dailymotion',
-  'spotify',
-  'x',
-  'facebook',
-  'instagram',
-];
+/** Platforms that need a paste-a-link input before sharing.
+ * (twitch/dailymotion/spotify graduated to direct in-app search tabs.) */
+const INPUT_APPS: AppKey[] = ['tiktok', 'vimeo', 'x', 'facebook', 'instagram'];
+
+/** Platforms with a direct in-app search tab (like YouTube). */
+const SEARCH_APPS: AppKey[] = ['dailymotion', 'twitch', 'spotify'];
+
+/** Friendlier sheet titles for the honest link-fallback platforms. */
+const SHEET_TITLE: Partial<Record<AppKey, string>> = {
+  x: 'View a Tweet together',
+  facebook: 'Watch Facebook together',
+  instagram: 'View Instagram together',
+};
+
+/** Honest helper copy for the link-fallback platforms. */
+const FALLBACK_HELPER: Partial<Record<AppKey, { line1: string; line2: string }>> = {
+  x: {
+    line1: 'Tweet ka link yahan paste karo — sab ke saath khul jayega.',
+    line2: 'Login ki zaroorat nahi — koi bhi public tweet chalega.',
+  },
+  facebook: {
+    line1: 'Public Facebook post ya video ka link paste karo — sab ek saath dekhenge.',
+    line2: 'Login ki zaroorat nahi — sirf public posts khulenge.',
+  },
+  instagram: {
+    line1: 'Instagram post ka link paste karo — sab ke saath khul jayega.',
+    line2: 'Login ki zaroorat nahi. Instagram embedding limit karta hai, is liye ye sandboxed viewer me khulta hai.',
+  },
+};
+
+const FALLBACK_EXAMPLE: Partial<Record<AppKey, string>> = {
+  x: 'Misal: https://x.com/NASA/status/1234567890',
+  facebook: 'Misal: https://www.facebook.com/watch/?v=1234567890',
+  instagram: 'Misal: https://www.instagram.com/p/ABC123xyz/',
+};
 
 const INPUT_PLACEHOLDER: Partial<Record<AppKey, string>> = {
   tiktok: 'Paste a TikTok video link…',
-  twitch: 'Channel name, e.g. shroud',
   vimeo: 'Paste a Vimeo video link…',
-  dailymotion: 'Paste a Dailymotion video link…',
-  spotify: 'Paste a Spotify playlist/track link…',
-  x: 'Paste a post link from X…',
+  x: 'Paste a tweet link…',
   facebook: 'Paste a public Facebook post/video link…',
   instagram: 'Paste an Instagram link…',
 };
-
-const SPOTIFY_SHORTCUTS: { name: string; id: string }[] = [
-  { name: "Today's Top Hits", id: '37i9dQZF1DXcBWIGoYBM5M' },
-  { name: 'Peaceful Piano', id: '37i9dQZF1DX4sWSpwq3LiO' },
-  { name: 'LoFi Beats', id: '37i9dQZF1DWWQRwui0ExPn' },
-];
 
 /** Parse a pasted URL / channel name into the embed-ready ref. */
 function parseRef(app: AppKey, raw: string): string | null {
@@ -203,32 +223,22 @@ function PlatformInputView({
     }
   };
 
+  const helper = FALLBACK_HELPER[app];
   return (
     <div className="flex flex-col gap-3 p-1">
-      <p className="text-xs text-[#8a7d68]">
-        {app === 'instagram'
-          ? 'Instagram limits embedding — the link opens in a sandboxed viewer for everyone.'
-          : 'Paste a link — the whole room loads it together.'}{' '}
-        {SYNC_NOTE[app] ? (
-          <span className="text-[#fdba74]">{SYNC_NOTE[app]}.</span>
-        ) : (
-          <span className="text-[#fdba74]">Plays together.</span>
+      <div className="rounded-xl border border-[#3a2d1e] bg-[#1a1410] p-3">
+        <p className="text-sm font-medium text-[#faf5ed]">
+          {helper ? helper.line1 : 'Paste a link — the whole room loads it together.'}
+        </p>
+        <p className="mt-1 text-xs text-[#fdba74]">
+          {helper ? helper.line2 : SYNC_NOTE[app] ? `${SYNC_NOTE[app]}.` : 'Plays together.'}
+        </p>
+        {FALLBACK_EXAMPLE[app] && (
+          <p className="mt-2 truncate text-[11px] text-[#8a7d68]">
+            {FALLBACK_EXAMPLE[app]}
+          </p>
         )}
-      </p>
-      {app === 'spotify' && (
-        <div className="flex flex-wrap gap-2">
-          {SPOTIFY_SHORTCUTS.map((p) => (
-            <button
-              key={p.id}
-              disabled={busy}
-              onClick={() => share(`https://open.spotify.com/playlist/${p.id}`)}
-              className="rounded-full border border-[#3a2d1e] bg-[#2a2117] px-3 py-1.5 text-xs font-medium text-[#faf5ed] active:scale-95 disabled:opacity-50"
-            >
-              {p.name}
-            </button>
-          ))}
-        </div>
-      )}
+      </div>
       <input
         value={value}
         onChange={(e) => setValue(e.target.value)}
@@ -324,7 +334,7 @@ export function AppsPanel({
       setActive(app);
       return;
     }
-    if (INPUT_APPS.includes(app)) {
+    if (SEARCH_APPS.includes(app) || INPUT_APPS.includes(app)) {
       setActive(app);
       return;
     }
@@ -350,7 +360,8 @@ export function AppsPanel({
     }
   };
 
-  const activeTitle = active ? LABELS[active] : '';
+  const activeTitle = active ? SHEET_TITLE[active] ?? LABELS[active] : '';
+  const tabProps = { roomId, deviceId, toast, onShared: onClose };
 
   return (
     <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true">
@@ -400,6 +411,12 @@ export function AppsPanel({
               <YouTubePickTab onPickUrl={handleYouTubePick} busy={ytBusy} />
             </div>
           )}
+
+          {active === 'dailymotion' && <DailymotionPickTab {...tabProps} />}
+
+          {active === 'twitch' && <TwitchPickTab {...tabProps} />}
+
+          {active === 'spotify' && <SpotifyPickTab {...tabProps} />}
 
           {active && INPUT_APPS.includes(active) && (
             <PlatformInputView
