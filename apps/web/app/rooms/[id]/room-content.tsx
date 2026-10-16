@@ -222,6 +222,7 @@ export function RoomContent({ roomId }: RoomContentProps) {
                             deviceId={deviceId}
                             roomName={room.name}
                             locked={room.locked === true}
+                            welcomeMessage={room.welcomeMessage}
                         />
                     )}
                 </div>
@@ -232,6 +233,7 @@ export function RoomContent({ roomId }: RoomContentProps) {
                     <p className="text-sm text-text-secondary truncate">{room.topic}</p>
                 </div>
             )}
+            <WelcomeBanner message={room.welcomeMessage} />
 
             {/* Body */}
             <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
@@ -383,6 +385,32 @@ export function RoomContent({ roomId }: RoomContentProps) {
         />
         </WatchPartyProvider>
         </VoiceProvider>
+    );
+}
+
+/** Warm welcome banner (free4talk-style), collapsible, owner-customizable. */
+function WelcomeBanner({ message }: { message?: string }) {
+    const [collapsed, setCollapsed] = useState(false);
+    const text =
+        message?.trim() ||
+        'Welcome to Free Open Talk! Be kind, take turns, and have fun practicing together 🧡';
+    return (
+        <div className="border-b border-surface-borderSubtle bg-gradient-to-r from-primary-500/10 via-secondary-500/10 to-primary-500/10">
+            <button
+                type="button"
+                onClick={() => setCollapsed((v) => !v)}
+                className="w-full px-4 py-1.5 flex items-center justify-center gap-2"
+            >
+                <span className="px-4 py-0.5 rounded-b-xl bg-primary-500 text-white text-xs font-semibold shadow-glow">
+                    Welcome Message
+                </span>
+            </button>
+            {!collapsed && (
+                <p className="px-5 pb-3 pt-1 text-center text-[15px] leading-relaxed text-primary-300 font-medium whitespace-pre-wrap">
+                    {text}
+                </p>
+            )}
+        </div>
     );
 }
 

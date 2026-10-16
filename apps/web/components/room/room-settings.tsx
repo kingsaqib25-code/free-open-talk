@@ -31,6 +31,7 @@ import {
     Flag,
     MicOff,
     Shield,
+    Smile,
 } from '@/components/ui/icons';
 import { cn } from '@/lib/design-system';
 
@@ -39,13 +40,15 @@ interface RoomSettingsProps {
     deviceId: string; // me (host)
     roomName: string;
     locked: boolean;
+    welcomeMessage?: string;
 }
 
-export function RoomSettings({ roomId, deviceId, roomName, locked }: RoomSettingsProps) {
+export function RoomSettings({ roomId, deviceId, roomName, locked, welcomeMessage }: RoomSettingsProps) {
     const [open, setOpen] = useState(false);
     const [copied, setCopied] = useState(false);
     const [busy, setBusy] = useState<string | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
+    const [welcomeDraft, setWelcomeDraft] = useState<string | null>(null);
 
     const reports = useQuery(
         api.moderation.listReports,
@@ -60,6 +63,7 @@ export function RoomSettings({ roomId, deviceId, roomName, locked }: RoomSetting
     const kick = useMutation(api.moderation.kick);
     const ban = useMutation(api.moderation.siteBan);
     const unban = useMutation(api.moderation.unban);
+    const setWelcome = useMutation(api.rooms.setWelcomeMessage);
 
     const run = async (key: string, fn: () => Promise<unknown>, doneMsg: string) => {
         setBusy(key);
@@ -162,6 +166,45 @@ export function RoomSettings({ roomId, deviceId, roomName, locked }: RoomSetting
                             {copied ? 'Copied!' : 'Copy invite link'}
                         </Button>
                     </div>
+                </section>
+
+                <div className="border-t border-surface-borderSubtle" />
+
+                {/* Welcome message */}
+                <section className="space-y-2">
+                    <h3 className="text-sm font-medium text-text-primary flex items-center gap-1.5">
+                        <Smile className="h-4 w-4 text-primary-400" />
+                        Welcome message
+                    </h3>
+                    <p className="text-xs text-text-tertiary">
+                        Shown to everyone in warm style when they open the room.
+                    </p>
+                    <textarea
+                        value={welcomeDraft ?? welcomeMessage ?? ''}
+                        onChange={(e) => setWelcomeDraft(e.target.value)}
+                        rows={3}
+                        maxLength={500}
+                        placeholder="Welcome to our room! Be kind, take turns, have fun…"
+                        className="w-full rounded-lg bg-surface-default border border-surface-border px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    />
+                    <Button
+                        size="sm"
+                        disabled={busy === 'welcome'}
+                        onClick={() =>
+                            run(
+                                'welcome',
+                                () =>
+                                    setWelcome({
+                                        roomId: roomId as any,
+                                        deviceId,
+                                        message: (welcomeDraft ?? welcomeMessage ?? '').trim(),
+                                    }).then(() => setWelcomeDraft(null)),
+                                'Welcome message saved.'
+                            )
+                        }
+                    >
+                        {busy === 'welcome' ? 'Saving…' : 'Save welcome message'}
+                    </Button>
                 </section>
 
                 <div className="border-t border-surface-borderSubtle" />
