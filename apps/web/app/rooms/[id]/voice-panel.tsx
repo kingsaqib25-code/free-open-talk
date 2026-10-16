@@ -30,6 +30,13 @@ import {
 import { useVoice, type RemoteParticipant } from '@/lib/services/p2p';
 import type { RoomMediaState } from '@/lib/hooks/use-convex-room';
 import { ParticipantMenu } from '@/components/room/participant-menu';
+import TierBadge from '@/components/engagement/TierBadge';
+import { useStreak } from '@/components/engagement/useStreak';
+import {
+    useCameraFilter,
+    cameraFilterCss,
+    CAMERA_FILTERS,
+} from '@/components/room/magic-camera';
 import {
     ScreenShareShareButton,
     ScreenShareHostControls,
@@ -56,17 +63,20 @@ interface VoicePanelProps {
     onMediaStateChange: (s: RoomMediaState) => void;
 }
 
-/** Renders a MediaStream into a <video> element. */
+/** Renders a MediaStream into a <video> element. `filter` is a CSS filter
+ *  string applied to the video element only (used for local camera preview). */
 function VideoTile({
     stream,
     muted,
     label,
     className,
+    filter,
 }: {
     stream: MediaStream;
     muted?: boolean;
     label?: string;
     className?: string;
+    filter?: string;
 }) {
     const ref = useRef<HTMLVideoElement>(null);
     useEffect(() => {
@@ -77,13 +87,40 @@ function VideoTile({
     }, [stream]);
     return (
         <div className={cn('relative rounded-xl overflow-hidden bg-surface-default', className)}>
-            <video ref={ref} autoPlay playsInline muted={muted} className="w-full h-full object-cover" />
+            <video
+                ref={ref}
+                autoPlay
+                playsInline
+                muted={muted}
+                className="w-full h-full object-cover"
+                style={filter ? { filter } : undefined}
+            />
             {label && (
                 <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/60 text-[11px] text-white truncate max-w-[90%]">
                     {label}
                 </div>
             )}
         </div>
+    );
+}
+
+/** Role badge overlay for tiles: "⭐ Owner" for the host, "Guest" + tier for everyone else. */
+function RoleBadge({ isOwner, streak }: { isOwner: boolean; streak: number }) {
+    return (
+        <span className="absolute left-1.5 top-1.5 z-10 flex items-center gap-1 pointer-events-none">
+            {isOwner ? (
+                <span className="rounded-full bg-amber-500/95 px-2 py-0.5 text-[11px] font-semibold text-black shadow">
+                    ⭐ Owner
+                </span>
+            ) : (
+                <>
+                    <span className="rounded-full border border-amber-500/30 bg-black/60 px-2 py-0.5 text-[11px] font-medium text-amber-200">
+                        Guest
+                    </span>
+                    <TierBadge streak={streak} size="sm" />
+                </>
+            )}
+        </span>
     );
 }
 
@@ -122,6 +159,7 @@ function RemoteTile({
     const screenStream = useTrackStream(mesh?.screenTrack ?? null);
     const speaking = mesh?.isSpeaking ?? false;
     const screenPaused = useRemoteScreenPaused(participant.deviceId);
+    const { streak } = useStreak(participant.deviceId);
     const label = (extra?: string) =>
         extra ? `${participant.nickname} · ${extra}` : participant.nickname;
 
@@ -165,6 +203,8 @@ function RemoteTile({
             >
                 <div className={fill ? 'w-full h-full' : undefined}>{visual}</div>
             </ParticipantMenu>
+            {/* Role badge: ⭐ Owner for host, Guest + tier for everyone else */}
+            <RoleBadge isOwner={participant.isOwner} streak={streak} />
             {/* Raised-hand badge */}
             {participant.handRaised && (
                 <span
@@ -248,6 +288,10 @@ export function VoicePanel({ roomId, roomMode, participants, deviceId, onMediaSt
     );
     const iAmOwner = me?.isOwner === true;
     const myRole = me?.role ?? 'publisher';
+    const { streak: myStreak } = useStreak(deviceId);
+    // Magic Camera: local-only preview filter for the self tile.
+    const { filter: cameraFilter } = useCameraFilter();
+    const selfFilterCss = cameraFilterCss(cameraFilter);
 
     const remoteById = useMemo(() => {
         const m = new Map<string, RemoteParticipant>();
@@ -341,18 +385,30 @@ export function VoicePanel({ roomId, roomMode, participants, deviceId, onMediaSt
     const heroPeer = isOneOnOne ? others[0] : undefined;
 
     const selfTile = (pip: boolean) =>
+        // Magic Camera filter applies to the self tile only (local preview —
+        // peers see the raw feed).
         localVideoStream ? (
-            <VideoTile
-                stream={localVideoStream}
-                muted
-                label={tileLabel('You', isSpeaking ? 'speaking' : isMuted ? 'muted' : undefined)}
-                className={pip ? 'w-full h-full' : 'aspect-video min-h-[220px] md:min-h-[280px]'}
-            />
+            <div className={cn('relative', pip ? 'w-full h-full' : undefined)}>
+                <VideoTile
+                    stream={localVideoStream}
+                    muted
+                    label={tileLabel('You', isSpeaking ? 'speaking' : isMuted ? 'muted' : undefined)}
+                    className={pip ? 'w-full h-full' : 'aspect-video min-h-[220px] md:min-h-[280px]'}
+                    filter={selfFilterCss || undefined}
+                />
+                <RoleBadge isOwner={iAmOwner} streak={myStreak} />
+                {selfFilterCss && (
+                    <span className="absolute bottom-1.5 right-1.5 z-10 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-amber-200 border border-amber-500/30 pointer-events-none">
+                        {CAMERA_FILTERS[cameraFilter].label} · preview only
+                    </span>
+                )}
+            </div>
         ) : (
             <div className={cn(
                 'rounded-xl bg-surface-default flex flex-col items-center justify-center gap-1.5 relative overflow-hidden',
                 pip ? 'w-full h-full' : 'aspect-video min-h-[220px] md:min-h-[280px]'
             )}>
+                <RoleBadge isOwner={iAmOwner} streak={myStreak} />
                 <Avatar alt="You" fallback="You" size={pip ? 'lg' : 'md'} />
                 <span className={cn('text-text-secondary', pip ? 'text-[11px]' : 'text-xs')}>
                     You {isSpeaking ? '· speaking' : isMuted ? '· muted' : ''}

@@ -711,6 +711,39 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
         this.updateState({ localAudioTrack: newTrack, selectedAudioInputId: deviceId });
     }
 
+    /**
+     * Swap the live outgoing mic audio track on every peer connection
+     * (no renegotiation needed — same MediaStreamTrack kind).
+     *
+     * Used by Magic Mic: a Web-Audio-processed track (voice changer) replaces
+     * the raw mic track, and re-acquiring the mic restores it. Mirrors the
+     * sender-swap pattern from switchAudioDevice.
+     */
+    async replaceLocalAudioTrack(newTrack: MediaStreamTrack): Promise<void> {
+        for (const [, slot] of this.peers) {
+            const sender = slot.pc.getSenders().find((s) => s.track?.kind === 'audio');
+            if (sender) {
+                try {
+                    await sender.replaceTrack(newTrack);
+                } catch (err) {
+                    this.log('replaceLocalAudioTrack failed', err);
+                }
+            }
+        }
+        // Swap locally too, so the local monitor tracks the new track.
+        if (this.localStream) {
+            const old = this.localStream.getAudioTracks()[0];
+            if (old && old !== newTrack) {
+                this.localStream.removeTrack(old);
+            }
+            if (!this.localStream.getAudioTracks().includes(newTrack)) {
+                this.localStream.addTrack(newTrack);
+            }
+        }
+        this.startLocalMonitor(newTrack);
+        this.updateState({ localAudioTrack: newTrack });
+    }
+
     // ------------------------------------------------------------------
     // Local video, screen share, publishing (stage mode)
     // ------------------------------------------------------------------
