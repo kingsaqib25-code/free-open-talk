@@ -229,6 +229,7 @@ export interface UseVoiceReturn {
     // Video / screen / publishing (Phase 3)
     isVideoOn: boolean;
     isSharingScreen: boolean;
+    isSharingScreenAudio: boolean;
     isPublishing: boolean;
     localVideoTrack: MediaStreamTrack | null;
     localScreenTrack: MediaStreamTrack | null;
@@ -343,6 +344,7 @@ export function useVoice(): UseVoiceReturn {
         // Video / screen / publishing
         isVideoOn: state.isVideoOn,
         isSharingScreen: state.isSharingScreen,
+        isSharingScreenAudio: state.isSharingScreenAudio,
         isPublishing: state.isPublishing,
         localVideoTrack: state.localVideoTrack,
         localScreenTrack: state.localScreenTrack,

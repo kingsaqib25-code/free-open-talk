@@ -35,10 +35,14 @@ import {
 import {
     useConvexRoom,
     useSendChat,
+    useReactToMessage,
     type RoomMediaState,
 } from '@/lib/hooks/use-convex-room';
 import { VoiceProvider } from '@/lib/services/p2p';
 import { VoicePanel, type PresenceParticipant } from './voice-panel';
+import { ParticipantMenu } from '@/components/room/participant-menu';
+import { getBlockedDevices } from '@/lib/blocked';
+import { Hand, Smile, Reply } from '@/components/ui/icons';
 
 interface RoomContentProps {
     roomId: string;
@@ -60,18 +64,41 @@ export function RoomContent({ roomId }: RoomContentProps) {
     const [mediaState, setMediaState] = useState<RoomMediaState>(DEFAULT_MEDIA_STATE);
 
     // Presence + chat via Convex (joins automatically on mount).
-    const { participants, messages, deviceId } = useConvexRoom(roomId, mediaState);
+    const { participants, messages, deviceId, joinError, wasRemoved } = useConvexRoom(roomId, mediaState);
     const sendChat = useSendChat(roomId);
+    const reactToMessage = useReactToMessage(roomId);
     const [chatText, setChatText] = useState('');
     const [isSending, setIsSending] = useState(false);
+    const [replyTarget, setReplyTarget] = useState<{
+        messageId: string;
+        nickname: string;
+        text: string;
+    } | null>(null);
+    const [menuNotice, setMenuNotice] = useState<string | null>(null);
 
     const participantList = useMemo(
         () => (participants ?? []) as PresenceParticipant[],
         [participants]
     );
+    const myParticipant = useMemo(
+        () => participantList.find((p) => p.deviceId === deviceId),
+        [participantList, deviceId]
+    );
+    const iAmOwner = myParticipant?.isOwner === true;
+    // Hide chat from devices this user blocked (personal block list).
+    const blockedDevices = useMemo(() => new Set(getBlockedDevices()), [messages]);
     const messageList = useMemo(
-        () => (messages ?? []) as Array<{ _id: string; nickname: string; text: string; createdAt: number }>,
-        [messages]
+        () =>
+            ((messages ?? []) as Array<{
+                _id: string;
+                deviceId: string;
+                nickname: string;
+                text: string;
+                createdAt: number;
+                reactions?: Array<{ deviceId: string; emoji: string }>;
+                replyTo?: { messageId: string; nickname: string; text: string };
+            }>).filter((m) => !blockedDevices.has(m.deviceId)),
+        [messages, blockedDevices]
     );
 
     const handleSendChat = async (e: React.FormEvent) => {
@@ -80,8 +107,9 @@ export function RoomContent({ roomId }: RoomContentProps) {
         if (!text || isSending) return;
         setIsSending(true);
         try {
-            await sendChat(text);
+            await sendChat(text, replyTarget ?? undefined);
             setChatText('');
+            setReplyTarget(null);
         } catch (err) {
             console.error('[room] chat send failed', err);
         } finally {
@@ -98,6 +126,24 @@ export function RoomContent({ roomId }: RoomContentProps) {
             <ErrorState
                 title="Room not found"
                 description="This room doesn't exist or has been closed."
+            />
+        );
+    }
+
+    if (joinError) {
+        return (
+            <ErrorState
+                title="Couldn't join"
+                description={joinError}
+            />
+        );
+    }
+
+    if (wasRemoved) {
+        return (
+            <ErrorState
+                title="Removed from room"
+                description="The host removed you from this room."
             />
         );
     }
@@ -153,21 +199,42 @@ export function RoomContent({ roomId }: RoomContentProps) {
                         ) : (
                             <div className="flex flex-wrap gap-3">
                                 {participantList.map((p) => (
-                                    <div key={p.deviceId} className="flex items-center gap-2">
-                                        <Avatar
-                                            alt={p.nickname}
-                                            fallback={p.nickname}
-                                            size="sm"
-                                        />
-                                        <span className="text-sm text-text-secondary max-w-[120px] truncate">
-                                            {p.nickname}
-                                            {p.isOwner && (
-                                                <span className="text-primary-400"> · host</span>
-                                            )}
-                                        </span>
-                                    </div>
+                                    <ParticipantMenu
+                                        key={p.deviceId}
+                                        roomId={roomId}
+                                        deviceId={deviceId}
+                                        targetDeviceId={p.deviceId}
+                                        targetNickname={p.nickname}
+                                        targetHandRaised={p.handRaised}
+                                        iAmOwner={iAmOwner && p.deviceId !== deviceId}
+                                        onAction={(msg) => setMenuNotice(msg)}
+                                    >
+                                        <button
+                                            type="button"
+                                            className="flex items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-surface-hover transition-colors"
+                                            title="More actions"
+                                        >
+                                            <Avatar
+                                                alt={p.nickname}
+                                                fallback={p.nickname}
+                                                size="sm"
+                                            />
+                                            <span className="text-sm text-text-secondary max-w-[120px] truncate">
+                                                {p.nickname}
+                                                {p.isOwner && (
+                                                    <span className="text-primary-400"> · host</span>
+                                                )}
+                                                {p.handRaised && (
+                                                    <Hand className="inline h-3.5 w-3.5 ml-1 text-amber-400" />
+                                                )}
+                                            </span>
+                                        </button>
+                                    </ParticipantMenu>
                                 ))}
                             </div>
+                        )}
+                        {menuNotice && (
+                            <p className="text-xs text-text-tertiary mt-2">{menuNotice}</p>
                         )}
                     </Card>
 
@@ -187,8 +254,42 @@ export function RoomContent({ roomId }: RoomContentProps) {
                         <MessageCircle className="h-4 w-4 text-primary-400" />
                         <h2 className="text-sm font-medium text-text-primary">Chat</h2>
                     </div>
-                    <ChatPanel messages={messageList} isLoading={messages === undefined} />
+                    <ChatPanel
+                        messages={messageList}
+                        isLoading={messages === undefined}
+                        myDeviceId={deviceId}
+                        myNickname={myParticipant?.nickname ?? 'Guest'}
+                        onReact={(messageId, emoji) =>
+                            reactToMessage(messageId, emoji).catch((e) =>
+                                console.error('[room] react failed', e)
+                            )
+                        }
+                        onReply={(m) =>
+                            setReplyTarget({
+                                messageId: m._id,
+                                nickname: m.nickname,
+                                text: m.text,
+                            })
+                        }
+                    />
                     <form onSubmit={handleSendChat} className="p-3 border-t border-surface-borderSubtle">
+                        {replyTarget && (
+                            <div className="flex items-center justify-between gap-2 mb-2 px-2 py-1.5 rounded-lg bg-surface-default text-xs">
+                                <span className="truncate text-text-secondary">
+                                    <Reply className="inline h-3 w-3 mr-1" />
+                                    Replying to <span className="font-medium text-primary-400">{replyTarget.nickname}</span>
+                                    : {replyTarget.text.slice(0, 60)}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setReplyTarget(null)}
+                                    className="text-text-tertiary hover:text-text-primary shrink-0"
+                                    aria-label="Cancel reply"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        )}
                         <div className="flex gap-2">
                             <Input
                                 placeholder="Say something..."
@@ -218,13 +319,70 @@ export function RoomContent({ roomId }: RoomContentProps) {
     );
 }
 
+type ChatMessage = {
+    _id: string;
+    deviceId: string;
+    nickname: string;
+    text: string;
+    createdAt: number;
+    reactions?: Array<{ deviceId: string; emoji: string }>;
+    replyTo?: { messageId: string; nickname: string; text: string };
+};
+
+const REACTION_EMOJIS = ['❤️', '👍', '😂', '🎉', '👏'];
+
+/** Highlight @mentions of me (or anyone) in message text. */
+function renderWithMentions(text: string, myNickname: string) {
+    const parts = text.split(/(@[\w.-]{1,30})/g);
+    return parts.map((part, i) => {
+        if (!part.startsWith('@')) return <span key={i}>{part}</span>;
+        const mentioned = part.slice(1).toLowerCase();
+        const isMe = mentioned === myNickname.toLowerCase();
+        return (
+            <span
+                key={i}
+                className={cn(
+                    'font-medium rounded px-0.5',
+                    isMe
+                        ? 'bg-primary-500/25 text-primary-300'
+                        : 'text-primary-400'
+                )}
+            >
+                {part}
+            </span>
+        );
+    });
+}
+
 function ChatPanel({
     messages,
     isLoading,
+    myDeviceId,
+    myNickname,
+    onReact,
+    onReply,
 }: {
-    messages: Array<{ _id: string; nickname: string; text: string; createdAt: number }>;
+    messages: ChatMessage[];
     isLoading: boolean;
+    myDeviceId: string;
+    myNickname: string;
+    onReact: (messageId: string, emoji: string) => void;
+    onReply: (m: ChatMessage) => void;
 }) {
+    const [pickerFor, setPickerFor] = useState<string | null>(null);
+
+    // Group reactions by emoji with counts + whether I reacted.
+    const grouped = (m: ChatMessage) => {
+        const map = new Map<string, { count: number; mine: boolean }>();
+        for (const r of m.reactions ?? []) {
+            const e = map.get(r.emoji) ?? { count: 0, mine: false };
+            e.count += 1;
+            if (r.deviceId === myDeviceId) e.mine = true;
+            map.set(r.emoji, e);
+        }
+        return [...map.entries()];
+    };
+
     return (
         <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
             {isLoading ? (
@@ -237,9 +395,76 @@ function ChatPanel({
                 </p>
             ) : (
                 messages.map((m) => (
-                    <div key={m._id} className="text-sm">
-                        <span className="font-medium text-primary-400">{m.nickname}</span>
-                        <p className="text-text-secondary break-words">{m.text}</p>
+                    <div key={m._id} className="text-sm group/msg">
+                        <div className="flex items-baseline gap-1.5">
+                            <span className="font-medium text-primary-400">{m.nickname}</span>
+                            <span className="ml-auto flex gap-0.5 opacity-0 group-hover/msg:opacity-100 transition-opacity">
+                                <button
+                                    type="button"
+                                    className="p-1 rounded hover:bg-surface-hover text-text-tertiary"
+                                    title="React"
+                                    onClick={() =>
+                                        setPickerFor(pickerFor === m._id ? null : m._id)
+                                    }
+                                >
+                                    <Smile className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                    type="button"
+                                    className="p-1 rounded hover:bg-surface-hover text-text-tertiary"
+                                    title="Reply"
+                                    onClick={() => onReply(m)}
+                                >
+                                    <Reply className="h-3.5 w-3.5" />
+                                </button>
+                            </span>
+                        </div>
+                        {m.replyTo && (
+                            <div className="mt-1 pl-2 border-l-2 border-surface-border text-xs text-text-tertiary">
+                                <span className="font-medium">{m.replyTo.nickname}</span>
+                                : {m.replyTo.text}
+                            </div>
+                        )}
+                        <p className="text-text-secondary break-words">
+                            {renderWithMentions(m.text, myNickname)}
+                        </p>
+                        {pickerFor === m._id && (
+                            <div className="flex gap-1 mt-1">
+                                {REACTION_EMOJIS.map((emoji) => (
+                                    <button
+                                        key={emoji}
+                                        type="button"
+                                        className="text-lg hover:scale-125 transition-transform"
+                                        onClick={() => {
+                                            onReact(m._id, emoji);
+                                            setPickerFor(null);
+                                        }}
+                                    >
+                                        {emoji}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                        {grouped(m).length > 0 && (
+                            <div className="flex gap-1 mt-1 flex-wrap">
+                                {grouped(m).map(([emoji, { count, mine }]) => (
+                                    <button
+                                        key={emoji}
+                                        type="button"
+                                        onClick={() => onReact(m._id, emoji)}
+                                        className={cn(
+                                            'text-xs px-1.5 py-0.5 rounded-full border',
+                                            mine
+                                                ? 'border-primary-400 bg-primary-500/15'
+                                                : 'border-surface-border bg-surface-default'
+                                        )}
+                                        title={mine ? 'Remove reaction' : 'React'}
+                                    >
+                                        {emoji} {count}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 ))
             )}

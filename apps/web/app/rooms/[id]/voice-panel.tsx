@@ -28,9 +28,11 @@ import {
     UserMinus,
     Loader2,
     AlertCircle,
+    Hand,
 } from '@/components/ui/icons';
 import { useVoice, type RemoteParticipant } from '@/lib/services/p2p';
 import type { RoomMediaState } from '@/lib/hooks/use-convex-room';
+import { ParticipantMenu } from '@/components/room/participant-menu';
 
 export interface PresenceParticipant {
     deviceId: string;
@@ -91,16 +93,24 @@ function RemoteTile({
     participant,
     mesh,
     roomMode,
+    roomId,
+    myDeviceId,
+    iAmOwner,
     showAdmin,
     acting,
     onRoleChange,
+    onAction,
 }: {
     participant: PresenceParticipant;
     mesh: RemoteParticipant | undefined;
     roomMode: 'voice' | 'stage' | 'private';
+    roomId: string;
+    myDeviceId: string;
+    iAmOwner: boolean;
     showAdmin: boolean;
     acting: boolean;
     onRoleChange: (deviceId: string, role: 'publisher' | 'listener') => void;
+    onAction: (msg: string) => void;
 }) {
     const videoStream = useTrackStream(mesh?.videoTrack ?? null);
     const screenStream = useTrackStream(mesh?.screenTrack ?? null);
@@ -108,32 +118,53 @@ function RemoteTile({
     const label = (extra?: string) =>
         extra ? `${participant.nickname} · ${extra}` : participant.nickname;
 
+    const visual = screenStream ? (
+        <VideoTile
+            stream={screenStream}
+            label={label('sharing screen')}
+            className="aspect-video"
+        />
+    ) : videoStream ? (
+        <VideoTile
+            stream={videoStream}
+            label={label(speaking ? 'speaking' : undefined)}
+            className="aspect-video"
+        />
+    ) : (
+        <div className="aspect-video rounded-xl bg-surface-default flex flex-col items-center justify-center gap-1.5 relative cursor-pointer hover:ring-1 hover:ring-surface-border transition-shadow">
+            <Avatar alt={participant.nickname} fallback={participant.nickname} size="md" />
+            <span className="text-xs text-text-secondary max-w-[90%] truncate">
+                {participant.nickname}
+                {participant.isOwner && ' · host'}
+                {participant.role === 'publisher' && roomMode === 'stage' && ' · on stage'}
+            </span>
+            {speaking && (
+                <span className="absolute inset-0 rounded-xl ring-2 ring-primary-400 pointer-events-none" />
+            )}
+        </div>
+    );
+
     return (
-        <div className={cn(screenStream && 'col-span-2')}>
-            {screenStream ? (
-                <VideoTile
-                    stream={screenStream}
-                    label={label('sharing screen')}
-                    className="aspect-video"
-                />
-            ) : videoStream ? (
-                <VideoTile
-                    stream={videoStream}
-                    label={label(speaking ? 'speaking' : undefined)}
-                    className="aspect-video"
-                />
-            ) : (
-                <div className="aspect-video rounded-xl bg-surface-default flex flex-col items-center justify-center gap-1.5 relative">
-                    <Avatar alt={participant.nickname} fallback={participant.nickname} size="md" />
-                    <span className="text-xs text-text-secondary max-w-[90%] truncate">
-                        {participant.nickname}
-                        {participant.isOwner && ' · host'}
-                        {participant.role === 'publisher' && roomMode === 'stage' && ' · on stage'}
-                    </span>
-                    {speaking && (
-                        <span className="absolute inset-0 rounded-xl ring-2 ring-primary-400 pointer-events-none" />
-                    )}
-                </div>
+        <div className={cn('relative', screenStream && 'col-span-2')}>
+            <ParticipantMenu
+                roomId={roomId}
+                deviceId={myDeviceId}
+                targetDeviceId={participant.deviceId}
+                targetNickname={participant.nickname}
+                targetHandRaised={participant.handRaised}
+                iAmOwner={iAmOwner}
+                onAction={onAction}
+            >
+                <div>{visual}</div>
+            </ParticipantMenu>
+            {/* Raised-hand badge */}
+            {participant.handRaised && (
+                <span
+                    className="absolute top-1.5 right-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-amber-400 text-black shadow pointer-events-none"
+                    title={`${participant.nickname} raised their hand`}
+                >
+                    <Hand className="h-4 w-4" />
+                </span>
             )}
             {showAdmin && (
                 <div className="mt-1.5 flex justify-center">
@@ -174,6 +205,7 @@ export function VoicePanel({ roomId, roomMode, participants, deviceId, onMediaSt
         isSpeaking,
         isVideoOn,
         isSharingScreen,
+        isSharingScreenAudio,
         isPublishing,
         localVideoTrack,
         localScreenTrack,
@@ -190,6 +222,7 @@ export function VoicePanel({ roomId, roomMode, participants, deviceId, onMediaSt
 
     const [joinError, setJoinError] = useState<string | null>(null);
     const [acting, setActing] = useState(false);
+    const [handRaised, setHandRaised] = useState(false);
     const setRole = useMutation(api.presence.setRole);
 
     const me = useMemo(
@@ -225,11 +258,11 @@ export function VoicePanel({ roomId, roomMode, participants, deviceId, onMediaSt
     useEffect(() => {
         onMediaStateChange({
             muted: isConnected ? isMuted : true,
-            handRaised: false,
+            handRaised,
             videoOn: isVideoOn,
             sharingScreen: isSharingScreen,
         });
-    }, [isConnected, isMuted, isVideoOn, isSharingScreen, onMediaStateChange]);
+    }, [isConnected, isMuted, handRaised, isVideoOn, isSharingScreen, onMediaStateChange]);
 
     // Stage mode: follow Convex role changes (promote/demote by the host).
     useEffect(() => {
@@ -357,9 +390,13 @@ export function VoicePanel({ roomId, roomMode, participants, deviceId, onMediaSt
                                     participant={p}
                                     mesh={remoteById.get(p.deviceId)}
                                     roomMode={roomMode}
+                                    roomId={roomId}
+                                    myDeviceId={deviceId}
+                                    iAmOwner={iAmOwner}
                                     showAdmin={roomMode === 'stage' && iAmOwner && !p.isOwner}
                                     acting={acting}
                                     onRoleChange={handleRoleChange}
+                                    onAction={(msg) => setJoinError(msg)}
                                 />
                             ))}
                     </div>
@@ -367,7 +404,17 @@ export function VoicePanel({ roomId, roomMode, participants, deviceId, onMediaSt
                     {/* Screen share preview (self) */}
                     {localScreenStream && (
                         <div className="mb-4">
-                            <VideoTile stream={localScreenStream} muted label="Your screen" className="aspect-video" />
+                            <VideoTile
+                                stream={localScreenStream}
+                                muted
+                                label={isSharingScreenAudio ? 'Your screen · with audio' : 'Your screen'}
+                                className="aspect-video"
+                            />
+                            {!isSharingScreenAudio && (
+                                <p className="text-xs text-text-tertiary text-center mt-1.5">
+                                    Tip: share a browser tab and tick “Share tab audio” to include sound.
+                                </p>
+                            )}
                         </div>
                     )}
 
@@ -394,6 +441,15 @@ export function VoicePanel({ roomId, roomMode, participants, deviceId, onMediaSt
                                     aria-label={isMuted ? 'Unmute' : 'Mute'}
                                 >
                                     {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                                </Button>
+                                <Button
+                                    size="icon"
+                                    variant={handRaised ? 'secondary' : 'outline'}
+                                    onClick={() => setHandRaised((v) => !v)}
+                                    aria-label={handRaised ? 'Lower hand' : 'Raise hand'}
+                                    title={handRaised ? 'Lower hand' : 'Raise hand'}
+                                >
+                                    <Hand className="h-5 w-5" />
                                 </Button>
                                 {roomMode !== 'voice' && (
                                     <Button

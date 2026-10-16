@@ -49,6 +49,18 @@ export default defineSchema({
     nickname: v.string(),
     text: v.string(),
     createdAt: v.number(),
+    // Emoji reactions: one entry per (deviceId, emoji); UI toggles them.
+    reactions: v.optional(
+      v.array(v.object({ deviceId: v.string(), emoji: v.string() }))
+    ),
+    // Reply quote: points at the quoted message.
+    replyTo: v.optional(
+      v.object({
+        messageId: v.id("messages"),
+        nickname: v.string(),
+        text: v.string(), // snippet, sliced at write time
+      })
+    ),
   }).index("by_room", ["roomId"]),
 
   // WebRTC signaling: offer/answer/ICE. Consumer deletes after reading.
@@ -84,4 +96,16 @@ export default defineSchema({
     reason: v.string(),
     createdAt: v.number(),
   }).index("by_room", ["roomId"]),
+
+  // Web Push subscriptions (PWA). One row per device; endpoint is the
+  // unique key. VAPID keys live in env (never in code).
+  pushSubscriptions: defineTable({
+    deviceId: v.string(),
+    endpoint: v.string(),
+    p256dh: v.string(),
+    auth: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_device", ["deviceId"])
+    .index("by_endpoint", ["endpoint"]),
 });

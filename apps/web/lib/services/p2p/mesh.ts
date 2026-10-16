@@ -71,6 +71,7 @@ const initialState = (): VoiceState => ({    connectionState: 'disconnected',
     localScreenTrack: null,
     isVideoOn: false,
     isSharingScreen: false,
+    isSharingScreenAudio: false,
     isPublishing: false,
     remoteParticipants: new Map<string, RemoteParticipant>(),
     audioInputDevices: [],
@@ -494,9 +495,23 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
         }
         const slot = this.peers.get(peerId);
         if (!slot) return;
-        const stream = e.streams[0] ?? new MediaStream([e.track]);
-        slot.remoteStream = stream;
-        const audioTrack = stream.getAudioTracks()[0] ?? e.track;
+        const streamId = e.streams[0]?.id ?? '';
+        // Record for late track-meta reclassification (video path uses it).
+        if (e.track.id) slot.trackStreams.set(e.track.id, streamId);
+
+        // Never replace the playback stream — mix every incoming audio track
+        // (mic + screen-share audio) into one persistent stream. Misclassifying
+        // a screen-audio track that arrived before its track-meta is harmless:
+        // it plays either way, which is the desired outcome.
+        if (!slot.remoteStream) {
+            slot.remoteStream = e.streams[0] ?? new MediaStream([e.track]);
+        } else if (!slot.remoteStream.getTrackById(e.track.id)) {
+            slot.remoteStream.addTrack(e.track);
+        }
+        const kind = slot.streamKinds.get(streamId);
+        if (kind === 'screen') this.log(`screen audio mixed for ${peerId}`);
+
+        const audioTrack = slot.remoteStream.getAudioTracks()[0] ?? e.track;
         this.patchParticipant(peerId, { audioTrack });
 
         if (!slot.audioEl) {
@@ -505,8 +520,13 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
             (el as HTMLAudioElement & { playsInline?: boolean }).playsInline = true;
             slot.audioEl = el;
         }
-        slot.audioEl.srcObject = stream;
+        slot.audioEl.srcObject = slot.remoteStream;
         this.playRemoteAudio(peerId);
+
+        // Remove the track from the mix when the sender stops sharing it.
+        e.track.onended = () => {
+            slot.remoteStream?.removeTrack(e.track);
+        };
 
         // Speaking detection on the remote track.
         slot.monitor?.stop();
@@ -755,8 +775,13 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
     }
 
     /**
-     * Share screen / window / tab. Must be called from a user gesture
-     * (button click) or the browser may block the picker.
+     * Share screen / window / tab, with system/tab audio when the OS
+     * provides it. Must be called from a user gesture (button click)
+     * or the browser may block the picker.
+     *
+     * Zero platform restrictions: we request whatever the OS offers and
+     * share it as-is. If a source app shows a black screen due to its own
+     * DRM, that is the other company's restriction, not ours.
      */
     async startScreenShare(): Promise<void> {
         if (this.state.isSharingScreen || this.disposed) return;
@@ -767,7 +792,10 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
         try {
             stream = await navigator.mediaDevices.getDisplayMedia({
                 video: true,
-                audio: false,
+                // System/tab audio: the browser only includes it when the
+                // user picks a tab and ticks "Share tab audio" (or the OS
+                // provides loopback). Absent on some platforms — handled below.
+                audio: true,
             });
         } catch (err) {
             // User cancelled the picker — not an error worth surfacing.
@@ -777,8 +805,9 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
             }
             throw err;
         }
-        const track = stream.getVideoTracks()[0];
-        if (!track) {
+        const videoTrack = stream.getVideoTracks()[0];
+        const audioTrack = stream.getAudioTracks()[0] ?? null;
+        if (!videoTrack) {
             stream.getTracks().forEach((t) => t.stop());
             throw new Error('Screen share produced no video track.');
         }
@@ -790,7 +819,8 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
         };
         for (const [peerId, slot] of this.peers) {
             try {
-                slot.pc.addTrack(track, stream);
+                slot.pc.addTrack(videoTrack, stream);
+                if (audioTrack) slot.pc.addTrack(audioTrack, stream);
             } catch (err) {
                 this.log(`addTrack(screen) failed for ${peerId}`, err);
                 continue;
@@ -799,38 +829,51 @@ export class P2PVoiceService extends EventEmitter<VoiceServiceEvents> {
             this.renegotiate(peerId);
         }
         // Browser "Stop sharing" button → clean up like a manual stop.
-        track.onended = () => {
+        const onEnded = () => {
             void this.stopScreenShare().catch(() => {});
         };
-        this.updateState({ localScreenTrack: track, isSharingScreen: true });
+        videoTrack.onended = onEnded;
+        if (audioTrack) audioTrack.onended = onEnded;
+        this.updateState({ localScreenTrack: videoTrack, isSharingScreen: true, isSharingScreenAudio: !!audioTrack });
         this.emit('screen-share-changed', true);
-        this.log('screen share started');
+        this.log(`screen share started${audioTrack ? ' (with audio)' : ' (video only)'}`);
     }
 
     async stopScreenShare(): Promise<void> {
         const track = this.state.localScreenTrack;
         const stream = this.screenStream;
         if (!track && !stream) return;
+        // Remove every sender carrying a screen-share track (video + audio).
+        const screenTrackIds = new Set((stream?.getTracks() ?? []).map((t) => t.id));
+        if (track) screenTrackIds.add(track.id);
         const meta: TrackMetaPayload = {
             action: 'remove',
             kind: 'screen',
             streamId: stream?.id ?? '',
         };
         for (const [peerId, slot] of this.peers) {
-            const sender = slot.pc.getSenders().find((s) => s.track === track);
-            if (sender) {
-                try {
-                    slot.pc.removeTrack(sender);
-                } catch { /* ignore */ }
+            let removed = false;
+            for (const sender of slot.pc.getSenders()) {
+                if (sender.track && screenTrackIds.has(sender.track.id)) {
+                    try {
+                        slot.pc.removeTrack(sender);
+                    } catch { /* ignore */ }
+                    removed = true;
+                }
+            }
+            if (removed) {
                 this.sendSignal(peerId, 'track-meta', meta);
                 this.renegotiate(peerId);
             }
         }
-        track?.stop();
+        // Stop every track the OS gave us (video + system/tab audio).
+        stream?.getTracks().forEach((t) => {
+            try { t.stop(); } catch { /* ignore */ }
+        });
         this.screenStream = null;
         // Only flip state if we were actually sharing (onended can race).
         if (this.state.isSharingScreen) {
-            this.updateState({ localScreenTrack: null, isSharingScreen: false });
+            this.updateState({ localScreenTrack: null, isSharingScreen: false, isSharingScreenAudio: false });
             this.emit('screen-share-changed', false);
         }
         this.log('screen share stopped');

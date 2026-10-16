@@ -1,4 +1,4 @@
-import { mutation } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 /**
@@ -109,5 +109,107 @@ export const report = mutation({
       reason: args.reason.slice(0, 300),
       createdAt: Date.now(),
     });
+  },
+});
+
+/** Site-wide ban (no roomId) or room ban. Owner-only. */
+export const siteBan = mutation({
+  args: {
+    roomId: v.optional(v.id("rooms")),
+    ownerDeviceId: v.string(),
+    targetDeviceId: v.string(),
+    reason: v.string(),
+    days: v.number(), // 365 = permanent
+  },
+  handler: async (ctx, args) => {
+    if (args.roomId) {
+      await requireOwner(ctx, args.roomId, args.ownerDeviceId);
+      const p = await ctx.db
+        .query("participants")
+        .withIndex("by_room_device", (q) =>
+          q.eq("roomId", args.roomId!).eq("deviceId", args.targetDeviceId)
+        )
+        .first();
+      if (p) await ctx.db.delete(p._id);
+    }
+    // Dedupe: one active ban per (device, room-scope).
+    const existing = await ctx.db
+      .query("bans")
+      .withIndex("by_device", (q) => q.eq("deviceId", args.targetDeviceId))
+      .collect();
+    const now = Date.now();
+    for (const b of existing) {
+      const sameScope =
+        (b.roomId === undefined && args.roomId === undefined) ||
+        (b.roomId !== undefined &&
+          args.roomId !== undefined &&
+          b.roomId === args.roomId);
+      if (sameScope && b.expiresAt > now) {
+        await ctx.db.patch(b._id, {
+          reason: args.reason.slice(0, 200),
+          expiresAt: now + Math.max(1, Math.min(365, args.days)) * 86_400_000,
+        });
+        return;
+      }
+    }
+    await ctx.db.insert("bans", {
+      roomId: args.roomId,
+      deviceId: args.targetDeviceId,
+      reason: args.reason.slice(0, 200),
+      expiresAt: now + Math.max(1, Math.min(365, args.days)) * 86_400_000,
+    });
+  },
+});
+
+/** Lift a ban. Owner-only (room bans) — site bans need any room's owner? No:
+ *  site-wide bans can only be lifted by explicit unban with the banner's
+ *  room context. For MVP: any room owner can unban a device. */
+export const unban = mutation({
+  args: {
+    roomId: v.id("rooms"),
+    ownerDeviceId: v.string(),
+    targetDeviceId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireOwner(ctx, args.roomId, args.ownerDeviceId);
+    const bans = await ctx.db
+      .query("bans")
+      .withIndex("by_device", (q) => q.eq("deviceId", args.targetDeviceId))
+      .collect();
+    for (const b of bans) await ctx.db.delete(b._id);
+  },
+});
+
+/** Reports for this room, newest first — host moderation queue. */
+export const listReports = query({
+  args: { roomId: v.id("rooms"), deviceId: v.string(), limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const room = await ctx.db.get(args.roomId);
+    if (!room || room.ownerDeviceId !== args.deviceId) return [];
+    const reports = await ctx.db
+      .query("reports")
+      .withIndex("by_room", (q) => q.eq("roomId", args.roomId))
+      .order("desc")
+      .take(args.limit ?? 50);
+    return reports;
+  },
+});
+
+/** Host lowers someone's raised hand. */
+export const lowerHand = mutation({
+  args: {
+    roomId: v.id("rooms"),
+    ownerDeviceId: v.string(),
+    targetDeviceId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireOwner(ctx, args.roomId, args.ownerDeviceId);
+    const p = await ctx.db
+      .query("participants")
+      .withIndex("by_room_device", (q) =>
+        q.eq("roomId", args.roomId).eq("deviceId", args.targetDeviceId)
+      )
+      .first();
+    if (p) await ctx.db.patch(p._id, { handRaised: false });
   },
 });

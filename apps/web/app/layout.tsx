@@ -4,6 +4,7 @@ import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { Toaster } from "sonner";
+import { PwaBootstrap } from "@/components/pwa-bootstrap";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,13 +27,26 @@ export const metadata: Metadata = {
     description: 'Join voice rooms and practice languages with native speakers from around the world.',
     siteName: 'Free2Talk',
   },
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Free2Talk',
+  },
+  icons: {
+    icon: [
+      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
 };
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  maximumScale: 5,
+  userScalable: true,
   viewportFit: 'cover',
   themeColor: '#0d0d14',
 };
@@ -50,6 +64,7 @@ export default function RootLayout({
         <Providers>
           {children}
         </Providers>
+        <PwaBootstrap />
         <Toaster
           position="bottom-right"
           theme="dark"

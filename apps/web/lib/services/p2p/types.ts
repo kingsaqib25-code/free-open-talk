@@ -93,6 +93,8 @@ export interface VoiceState {
     isVideoOn: boolean;
     /** Screen currently shared */
     isSharingScreen: boolean;
+    /** Screen-share includes system/tab audio (false when the OS gave video only) */
+    isSharingScreenAudio: boolean;
     /** Mic/camera published to the mesh (false = stage audience listener) */
     isPublishing: boolean;
     remoteParticipants: Map<string, RemoteParticipant>;

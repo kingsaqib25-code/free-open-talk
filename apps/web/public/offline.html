@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#0d0d14" />
+<title>Free2Talk — You're offline</title>
+<style>
+  body { margin: 0; background: #0d0d14; color: #e8e8f0; font-family: system-ui, sans-serif;
+         display: flex; align-items: center; justify-content: center; min-height: 100vh; text-align: center; }
+  .card { max-width: 320px; padding: 24px; }
+  h1 { font-size: 1.25rem; margin: 0 0 8px; }
+  p { color: #9a9ab0; font-size: 0.9rem; }
+  button { margin-top: 16px; background: #7c5cff; color: #fff; border: 0; border-radius: 10px;
+           padding: 10px 20px; font-size: 0.95rem; cursor: pointer; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>You're offline</h1>
+    <p>Free2Talk needs an internet connection for live voice rooms. Check your connection and try again.</p>
+    <button onclick="location.reload()">Retry</button>
+  </div>
+</body>
+</html>
