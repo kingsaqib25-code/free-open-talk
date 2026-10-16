@@ -251,6 +251,14 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_query", ["query"]),
 
+  // Dailymotion public API search cache (keyless, but cached 1hr anyway to
+  // keep results snappy — see convex/dailymotion.ts).
+  dmCache: defineTable({
+    query: v.string(), // normalized (trimmed, lowercased)
+    resultsJson: v.string(), // JSON-encoded DailymotionSearchResult[]
+    createdAt: v.number(),
+  }).index("by_query", ["query"]),
+
   // Friend / follow system (guest-friendly: identity = deviceId, no accounts).
   // A follows B => A gets a Web Push when B comes online (rate-limited).
   follows: defineTable({

@@ -16,5 +16,10 @@ crons.daily(
   { hourUTC: 4, minuteUTC: 0 },
   internal.youtube.cleanupOld
 );
+crons.daily(
+  "prune old Dailymotion search cache",
+  { hourUTC: 4, minuteUTC: 5 },
+  internal.dailymotion.cleanupOld
+);
 
 export default crons;

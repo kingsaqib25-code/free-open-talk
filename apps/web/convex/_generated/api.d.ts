@@ -11,6 +11,7 @@
 import type * as auth from "../auth.js";
 import type * as chat from "../chat.js";
 import type * as crons from "../crons.js";
+import type * as dailymotion from "../dailymotion.js";
 import type * as follows from "../follows.js";
 import type * as moderation from "../moderation.js";
 import type * as presence from "../presence.js";
@@ -33,6 +34,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   chat: typeof chat;
   crons: typeof crons;
+  dailymotion: typeof dailymotion;
   follows: typeof follows;
   moderation: typeof moderation;
   presence: typeof presence;
