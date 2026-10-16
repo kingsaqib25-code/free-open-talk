@@ -14,6 +14,7 @@ import type * as presence from "../presence.js";
 import type * as push from "../push.js";
 import type * as roomapps from "../roomapps.js";
 import type * as rooms from "../rooms.js";
+import type * as sharedMedia from "../sharedMedia.js";
 import type * as signals from "../signals.js";
 import type * as streaks from "../streaks.js";
 import type * as watchparty from "../watchparty.js";
@@ -31,6 +32,7 @@ declare const fullApi: ApiFromModules<{
   push: typeof push;
   roomapps: typeof roomapps;
   rooms: typeof rooms;
+  sharedMedia: typeof sharedMedia;
   signals: typeof signals;
   streaks: typeof streaks;
   watchparty: typeof watchparty;
