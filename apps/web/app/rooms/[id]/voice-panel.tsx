@@ -26,6 +26,7 @@ import {
     Loader2,
     AlertCircle,
     Hand,
+    Maximize2,
 } from '@/components/ui/icons';
 import { useVoice, type RemoteParticipant } from '@/lib/services/p2p';
 import type { RoomMediaState } from '@/lib/hooks/use-convex-room';
@@ -93,7 +94,7 @@ function VideoTile({
         }
     }, [stream]);
     return (
-        <div className={cn('relative rounded-xl overflow-hidden bg-surface-default', className)}>
+        <div className={cn('relative rounded-xl overflow-hidden bg-surface-default animate-[fadeIn_0.35s_ease-out]', className)}>
             <video
                 ref={ref}
                 autoPlay
@@ -102,6 +103,8 @@ function VideoTile({
                 className="w-full h-full object-cover"
                 style={filter ? { filter } : undefined}
             />
+            {/* Warm gradient sheen: premium feel + label legibility */}
+            <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/55 via-black/10 to-transparent pointer-events-none" />
             {label && (
                 <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/60 text-[11px] text-white truncate max-w-[90%]">
                     {label}
@@ -167,10 +170,28 @@ function RemoteTile({
     const speaking = mesh?.isSpeaking ?? false;
     const screenPaused = useRemoteScreenPaused(participant.deviceId);
     const { streak } = useStreak(participant.deviceId);
+    const tileRef = useRef<HTMLDivElement>(null);
     const label = (extra?: string) =>
         extra ? `${participant.nickname} · ${extra}` : participant.nickname;
 
-    const tileClass = fill ? 'w-full h-full' : 'aspect-video min-h-[220px] md:min-h-[280px]';
+    const toggleFullscreen = () => {
+        const el = tileRef.current;
+        if (!el) return;
+        if (document.fullscreenElement) {
+            void document.exitFullscreen().catch(() => {});
+        } else {
+            void el.requestFullscreen?.().catch(() => {});
+        }
+    };
+
+    const tileClass = fill
+        ? 'w-full h-full'
+        : cn(
+              'aspect-video min-h-[220px] md:min-h-[280px] animate-[fadeIn_0.35s_ease-out]',
+              // Portrait phones: TALL tiles so front-camera video dominates the screen.
+              // Screen shares stay 16:9 (landscape content).
+              !screenStream && 'portrait:max-md:aspect-[9/14] portrait:max-md:min-h-[380px]'
+          );
     const visual = screenStream ? (
         <VideoTile
             stream={screenStream}
@@ -200,6 +221,7 @@ function RemoteTile({
     return (
         <div
             id={`fot-tile-${participant.deviceId}`}
+            ref={tileRef}
             className={cn(fill ? 'absolute inset-0' : 'relative', !fill && screenStream && 'col-span-full')}
         >
             <ParticipantMenu
@@ -224,7 +246,7 @@ function RemoteTile({
                     <Hand className="h-4 w-4" />
                 </span>
             )}
-            {/* Screen-share: paused badge + viewer PiP */}
+            {/* Screen-share: paused badge + fullscreen + viewer PiP */}
             {screenStream && (
                 <div className="absolute bottom-2 right-2 z-10 flex items-center gap-1.5">
                     {screenPaused && (
@@ -232,6 +254,15 @@ function RemoteTile({
                             Paused
                         </span>
                     )}
+                    <button
+                        type="button"
+                        onClick={toggleFullscreen}
+                        className="p-1.5 rounded-lg bg-black/70 text-white/90 hover:text-white border border-white/10 backdrop-blur-sm"
+                        title="Fullscreen shared screen"
+                        aria-label="Fullscreen shared screen"
+                    >
+                        <Maximize2 className="h-4 w-4" />
+                    </button>
                     <RemoteScreenPiPButton stream={screenStream} />
                 </div>
             )}
@@ -396,6 +427,54 @@ export function VoicePanel({ roomId, roomMode, participants, deviceId, onMediaSt
     const isOneOnOne = roomMode === 'private' && others.length >= 1;
     const heroPeer = isOneOnOne ? others[0] : undefined;
 
+    /** Control bar — floating warm pill over video (1-on-1) or inline strip. */
+    const renderControls = (floating: boolean) => (
+        <div
+            className={cn(
+                'flex items-center justify-center gap-2 flex-wrap',
+                floating &&
+                    'pointer-events-auto bg-black/55 backdrop-blur-md rounded-full px-3 py-2 ring-1 ring-white/10 shadow-2xl animate-[slideUp_0.3s_ease-out]'
+            )}
+        >
+            {isPublishing && (
+                <>
+                    <Button
+                        size="icon"
+                        variant={isMuted ? "danger" : "secondary"}
+                        onClick={() => toggleMute().catch(() => {})}
+                        aria-label={isMuted ? 'Unmute' : 'Mute'}
+                    >
+                        {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                    </Button>
+                    <Button
+                        size="icon"
+                        variant={handRaised ? 'secondary' : 'outline'}
+                        onClick={() => setHandRaised((v) => !v)}
+                        aria-label={handRaised ? 'Lower hand' : 'Raise hand'}
+                        title={handRaised ? 'Lower hand' : 'Raise hand'}
+                    >
+                        <Hand className="h-5 w-5" />
+                    </Button>
+                    {roomMode !== 'voice' && (
+                        <Button
+                            size="icon"
+                            variant={isVideoOn ? 'secondary' : 'outline'}
+                            onClick={() => setVideoEnabled(!isVideoOn).catch(() => {})}
+                            aria-label={isVideoOn ? 'Turn camera off' : 'Turn camera on'}
+                        >
+                            {isVideoOn ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
+                        </Button>
+                    )}
+                    <ScreenShareShareButton />
+                    <ScreenShareHostControls />
+                </>
+            )}
+            <Button size="icon" variant="danger" onClick={() => leaveRoom().catch(() => {})} aria-label="Leave">
+                <PhoneOff className="h-5 w-5" />
+            </Button>
+        </div>
+    );
+
     const selfTile = (pip: boolean) =>
         // Magic Camera filter applies to the self tile only (local preview —
         // peers see the raw feed).
@@ -405,7 +484,7 @@ export function VoicePanel({ roomId, roomMode, participants, deviceId, onMediaSt
                     stream={localVideoStream}
                     muted
                     label={tileLabel('You', isSpeaking ? 'speaking' : isMuted ? 'muted' : undefined)}
-                    className={pip ? 'w-full h-full' : 'aspect-video min-h-[220px] md:min-h-[280px]'}
+                    className={pip ? 'w-full h-full' : 'aspect-video min-h-[220px] md:min-h-[280px] portrait:max-md:aspect-[9/14] portrait:max-md:min-h-[380px]'}
                     filter={selfFilterCss || undefined}
                 />
                 <RoleBadge isOwner={iAmOwner} streak={myStreak} />
@@ -417,8 +496,8 @@ export function VoicePanel({ roomId, roomMode, participants, deviceId, onMediaSt
             </div>
         ) : (
             <div className={cn(
-                'rounded-xl bg-surface-default flex flex-col items-center justify-center gap-1.5 relative overflow-hidden',
-                pip ? 'w-full h-full' : 'aspect-video min-h-[220px] md:min-h-[280px]'
+                'rounded-xl bg-surface-default flex flex-col items-center justify-center gap-1.5 relative overflow-hidden animate-[fadeIn_0.35s_ease-out]',
+                pip ? 'w-full h-full' : 'aspect-video min-h-[220px] md:min-h-[280px] portrait:max-md:aspect-[9/14] portrait:max-md:min-h-[380px]'
             )}>
                 <RoleBadge isOwner={iAmOwner} streak={myStreak} />
                 <Avatar alt="You" fallback="You" size={pip ? 'lg' : 'md'} />
@@ -470,9 +549,11 @@ export function VoicePanel({ roomId, roomMode, participants, deviceId, onMediaSt
                 </div>
             ) : (
                 <div className="p-4">
-                    {/* Tiles — 1-on-1 hero for private video calls */}
+                    {/* Tiles — 1-on-1 hero for private video calls.
+                        Portrait phones: the remote video dominates (tall, full-bleed);
+                        controls float over it as a pill, self PiP sits above them. */}
                     {isOneOnOne && heroPeer ? (
-                        <div className="relative min-h-[55vh] md:min-h-[68vh] rounded-2xl overflow-hidden bg-surface-default mb-4 ring-1 ring-surface-border">
+                        <div className="relative min-h-[55vh] portrait:max-md:min-h-[74vh] md:min-h-[68vh] rounded-2xl overflow-hidden bg-surface-default mb-4 ring-1 ring-surface-border">
                             <RemoteTile
                                 key={heroPeer.deviceId}
                                 participant={heroPeer}
@@ -487,13 +568,17 @@ export function VoicePanel({ roomId, roomMode, participants, deviceId, onMediaSt
                                 onAction={(msg) => setJoinError(msg)}
                                 fill
                             />
-                            {/* Self PiP */}
-                            <div className="absolute bottom-3 right-3 z-10 w-28 md:w-44 aspect-video rounded-xl overflow-hidden ring-1 ring-surface-border shadow-xl bg-surface-default">
+                            {/* Self PiP — raised above the floating controls */}
+                            <div className="absolute bottom-20 right-3 z-10 w-28 portrait:max-md:w-24 aspect-video portrait:max-md:aspect-[3/4] md:w-44 rounded-xl overflow-hidden ring-1 ring-surface-border shadow-xl bg-surface-default">
                                 {selfTile(true)}
+                            </div>
+                            {/* Floating controls over the video */}
+                            <div className="absolute bottom-4 inset-x-0 z-20 flex justify-center pointer-events-none px-3">
+                                {renderControls(true)}
                             </div>
                         </div>
                     ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4 auto-rows-fr">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3 mb-4 auto-rows-fr">
                         {/* Self tile */}
                         <div>
                             {selfTile(false)}
@@ -548,45 +633,8 @@ export function VoicePanel({ roomId, roomMode, participants, deviceId, onMediaSt
                         </p>
                     )}
 
-                    {/* Controls */}
-                    <div className="flex items-center justify-center gap-2 flex-wrap">
-                        {isPublishing && (
-                            <>
-                                <Button
-                                    size="icon"
-                                    variant={isMuted ? "danger" : "secondary"}
-                                    onClick={() => toggleMute().catch(() => {})}
-                                    aria-label={isMuted ? 'Unmute' : 'Mute'}
-                                >
-                                    {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-                                </Button>
-                                <Button
-                                    size="icon"
-                                    variant={handRaised ? 'secondary' : 'outline'}
-                                    onClick={() => setHandRaised((v) => !v)}
-                                    aria-label={handRaised ? 'Lower hand' : 'Raise hand'}
-                                    title={handRaised ? 'Lower hand' : 'Raise hand'}
-                                >
-                                    <Hand className="h-5 w-5" />
-                                </Button>
-                                {roomMode !== 'voice' && (
-                                    <Button
-                                        size="icon"
-                                        variant={isVideoOn ? 'secondary' : 'outline'}
-                                        onClick={() => setVideoEnabled(!isVideoOn).catch(() => {})}
-                                        aria-label={isVideoOn ? 'Turn camera off' : 'Turn camera on'}
-                                    >
-                                        {isVideoOn ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
-                                    </Button>
-                                )}
-                                <ScreenShareShareButton />
-                                <ScreenShareHostControls />
-                            </>
-                        )}
-                        <Button size="icon" variant="danger" onClick={() => leaveRoom().catch(() => {})} aria-label="Leave">
-                            <PhoneOff className="h-5 w-5" />
-                        </Button>
-                    </div>
+                    {/* Controls — inline strip (1-on-1 uses the floating pill instead) */}
+                    {!(isOneOnOne && heroPeer) && renderControls(false)}
                     {error && (
                         <p className="flex items-center justify-center gap-1.5 text-xs text-status-error mt-3">
                             <AlertCircle className="h-3.5 w-3.5" /> {error.message}
