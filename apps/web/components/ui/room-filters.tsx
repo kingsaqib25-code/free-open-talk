@@ -10,6 +10,8 @@ import { Filter, SortDesc } from './icons';
 interface RoomFiltersProps {
     onSearch?: (query: string) => void;
     onFilterChange?: (filters: RoomFilterState) => void;
+    /** Live room counts keyed by language name (plus 'All' for the total). */
+    languageCounts?: Record<string, number>;
     className?: string;
 }
 
@@ -29,6 +31,14 @@ const languages = [
     'Korean',
     'Chinese',
     'Portuguese',
+    'Russian',
+    'Italian',
+    'Arabic',
+    'Hindi',
+    'Urdu',
+    'Dutch',
+    'Swedish',
+    'Polish',
 ];
 
 const categories = [
@@ -39,7 +49,7 @@ const categories = [
     { id: 'gaming', label: 'Gaming' },
 ];
 
-export function RoomFilters({ onSearch, onFilterChange, className }: RoomFiltersProps) {
+export function RoomFilters({ onSearch, onFilterChange, languageCounts, className }: RoomFiltersProps) {
     const [selectedLanguage, setSelectedLanguage] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -71,20 +81,35 @@ export function RoomFilters({ onSearch, onFilterChange, className }: RoomFilters
             {/* Language Filter Pills - Horizontal scroll on mobile */}
             <div className="relative">
                 <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap">
-                    {languages.map((lang) => (
-                        <button
-                            key={lang}
-                            onClick={() => handleLanguageChange(lang)}
-                            className={cn(
-                                'flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200',
-                                selectedLanguage === lang
-                                    ? 'bg-primary-500 text-white'
-                                    : 'bg-surface-default text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-surface-border'
-                            )}
-                        >
-                            {lang}
-                        </button>
-                    ))}
+                    {languages.map((lang) => {
+                        const count = languageCounts?.[lang];
+                        return (
+                            <button
+                                key={lang}
+                                onClick={() => handleLanguageChange(lang)}
+                                className={cn(
+                                    'flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200',
+                                    selectedLanguage === lang
+                                        ? 'bg-primary-500 text-white'
+                                        : 'bg-surface-default text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-surface-border'
+                                )}
+                            >
+                                {lang}
+                                {count !== undefined && (
+                                    <span
+                                        className={cn(
+                                            'ml-1.5',
+                                            selectedLanguage === lang
+                                                ? 'text-white/80'
+                                                : 'text-text-tertiary'
+                                        )}
+                                    >
+                                        · {count}
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })}
                 </div>
                 {/* Fade indicator for scroll */}
                 <div className="absolute right-0 top-0 bottom-2 w-8 bg-gradient-to-l from-background-primary to-transparent pointer-events-none md:hidden" />

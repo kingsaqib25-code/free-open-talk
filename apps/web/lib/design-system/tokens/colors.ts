@@ -1,118 +1,120 @@
 /**
- * Color System - Free2Talk Design Tokens
- * 
- * Inspired by HelloTalk's dark theme with purple accents
- * Mobile-first, accessible color palette
+ * Color System - Free Open Talk Design Tokens
+ *
+ * Warm dark theme with orange/amber accents.
+ * Mirrors the CSS custom properties in app/globals.css — token names stay
+ * the same (bg-primary-500 etc.), they now resolve to the warm palette.
  */
 
 export const colors = {
-    // Primary - Purple accent (signature color)
+    // Primary - Warm orange accent (signature color)
     primary: {
-        50: '#f5f3ff',
-        100: '#ede9fe',
-        200: '#ddd6fe',
-        300: '#c4b5fd',
-        400: '#a78bfa',
-        500: '#8b5cf6', // Main primary
-        600: '#7c3aed',
-        700: '#6d28d9',
-        800: '#5b21b6',
-        900: '#4c1d95',
-        950: '#2e1065',
+        50: '#fff7ed',
+        100: '#ffedd5',
+        200: '#fed7aa',
+        300: '#fdba74',
+        400: '#fb923c',
+        500: '#f97316', // Main primary
+        600: '#ea580c',
+        700: '#c2410c',
+        800: '#9a3412',
+        900: '#7c2d12',
+        950: '#431407',
     },
 
-    // Secondary - Indigo for depth
+    // Secondary - Amber for depth
     secondary: {
-        50: '#eef2ff',
-        100: '#e0e7ff',
-        200: '#c7d2fe',
-        300: '#a5b4fc',
-        400: '#818cf8',
-        500: '#6366f1',
-        600: '#4f46e5',
-        700: '#4338ca',
-        800: '#3730a3',
-        900: '#312e81',
-        950: '#1e1b4b',
+        50: '#fffbeb',
+        100: '#fef3c7',
+        200: '#fde68a',
+        300: '#fcd34d',
+        400: '#fbbf24',
+        500: '#f59e0b',
+        600: '#d97706',
+        700: '#b45309',
+        800: '#92400e',
+        900: '#78350f',
+        950: '#451a03',
     },
 
-    // Background colors - Dark theme
+    // Background colors - Warm dark theme
     background: {
-        primary: '#0d0d14',      // Deepest background
-        secondary: '#13131f',    // Card backgrounds
-        tertiary: '#1a1a2e',     // Elevated elements
-        elevated: '#252538',     // Hover states, inputs
+        primary: '#14100c',      // Deepest background
+        secondary: '#1a1410',    // Card backgrounds
+        tertiary: '#221a12',     // Elevated elements
+        elevated: '#2a2015',     // Hover states, inputs
         overlay: 'rgba(0, 0, 0, 0.7)', // Modal overlays
     },
 
     // Surface colors for cards and containers
     surface: {
-        default: '#16162a',
-        hover: '#1e1e38',
-        active: '#262648',
-        border: '#2a2a4a',
-        borderSubtle: '#1f1f3a',
+        default: '#211a13',
+        hover: '#2a2117',
+        active: '#332920',
+        border: '#3a2d1e',
+        borderSubtle: '#2c2318',
     },
 
     // Text colors
     text: {
-        primary: '#f8fafc',      // Main text
-        secondary: '#a1a1aa',    // Muted text
-        tertiary: '#71717a',     // Disabled/placeholder
-        inverse: '#0d0d14',      // Text on light bg
-        accent: '#a78bfa',       // Highlighted text
+        primary: '#faf5ed',      // Main text
+        secondary: '#c9bda9',    // Muted text
+        tertiary: '#8a7d68',     // Disabled/placeholder
+        inverse: '#14100c',      // Text on light bg
+        accent: '#fdba74',       // Highlighted text
     },
 
     // Status colors
     status: {
-        success: '#22c55e',
+        success: '#4ade80',
         successMuted: '#166534',
         warning: '#f59e0b',
         warningMuted: '#92400e',
-        error: '#ef4444',
-        errorMuted: '#991b1b',
-        info: '#3b82f6',
-        infoMuted: '#1e40af',
+        error: '#f87171',
+        errorMuted: '#7f1d1d',
+        info: '#fbbf24',
+        infoMuted: '#92400e',
     },
 
     // Voice/Audio specific
     voice: {
-        speaking: '#22c55e',     // Active speaking indicator
-        speakingGlow: 'rgba(34, 197, 94, 0.4)',
-        muted: '#ef4444',
-        mutedGlow: 'rgba(239, 68, 68, 0.3)',
-        idle: '#71717a',
+        speaking: '#f59e0b',     // Active speaking indicator (amber)
+        speakingGlow: 'rgba(245, 158, 11, 0.4)',
+        muted: '#f87171',
+        mutedGlow: 'rgba(248, 113, 113, 0.3)',
+        idle: '#8a7d68',
     },
 
     // Interactive states
     interactive: {
-        hover: 'rgba(139, 92, 246, 0.1)',
-        active: 'rgba(139, 92, 246, 0.2)',
-        focus: 'rgba(139, 92, 246, 0.4)',
+        hover: 'rgba(249, 115, 22, 0.1)',
+        active: 'rgba(249, 115, 22, 0.2)',
+        focus: 'rgba(249, 115, 22, 0.4)',
     },
 
-    // Language badges - Colorful indicators
+    // Language badges - Warm tints so every language reads as its own
+    // shade of the theme instead of clashing cool colors
     language: {
-        english: '#3b82f6',
+        english: '#fb923c',
         spanish: '#f59e0b',
-        french: '#ec4899',
-        german: '#10b981',
-        japanese: '#ef4444',
-        korean: '#8b5cf6',
-        chinese: '#f97316',
-        portuguese: '#06b6d4',
-        russian: '#6366f1',
-        arabic: '#14b8a6',
-        default: '#6366f1',
+        french: '#fdba74',
+        german: '#fbbf24',
+        japanese: '#f87171',
+        korean: '#f97316',
+        chinese: '#ea580c',
+        portuguese: '#fcd34d',
+        russian: '#d97706',
+        arabic: '#fde68a',
+        default: '#f97316',
     },
 
     // Gradients
     gradient: {
-        primary: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
-        secondary: 'linear-gradient(135deg, #6366f1 0%, #3b82f6 100%)',
-        surface: 'linear-gradient(180deg, rgba(139, 92, 246, 0.1) 0%, transparent 100%)',
-        glow: 'radial-gradient(circle, rgba(139, 92, 246, 0.2) 0%, transparent 70%)',
-        card: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%)',
+        primary: 'linear-gradient(135deg, #f97316 0%, #f59e0b 100%)',
+        secondary: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)',
+        surface: 'linear-gradient(180deg, rgba(249, 115, 22, 0.1) 0%, transparent 100%)',
+        glow: 'radial-gradient(circle, rgba(249, 115, 22, 0.2) 0%, transparent 70%)',
+        card: 'linear-gradient(135deg, rgba(249, 115, 22, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%)',
     },
 } as const;
 

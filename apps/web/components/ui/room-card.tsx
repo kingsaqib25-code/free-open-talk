@@ -5,7 +5,7 @@ import { cn } from '@/lib/design-system';
 import { Card } from './card';
 import { Avatar, AvatarGroup } from './avatar';
 import { LanguageBadge, ParticipantBadge } from './badge';
-import { Mic, VoiceWaveIcon } from './icons';
+import { VoiceWaveIcon } from './icons';
 
 export interface RoomCardProps {
     id: string;
@@ -27,6 +27,10 @@ export interface RoomCardProps {
         isSpeaking?: boolean;
     }>;
     isLive?: boolean;
+    /** Skill level label shown in italic grey next to the language name (e.g. "Beginner"). */
+    level?: string;
+    /** Passthrough on the root div — e.g. a Pro-host animated border wrapper. */
+    className?: string;
 }
 
 export function RoomCard({
@@ -39,88 +43,115 @@ export function RoomCard({
     owner,
     participants = [],
     isLive = true,
+    level,
+    className,
 }: RoomCardProps) {
     const isFull = participantCount >= maxParticipants;
+    const primaryLanguage = languages[0] ?? name;
 
-    return (
-        <Link href={`/rooms/${id}`}>
-            <Card
-                variant="interactive"
-                padding="none"
+    // Owner first, then participants — overlapping circular avatars.
+    const avatarList = [
+        {
+            src: owner.avatarUrl,
+            alt: owner.displayName || owner.username,
+            fallback: owner.displayName || owner.username,
+        },
+        ...participants.map((p) => ({
+            src: p.avatarUrl,
+            alt: p.username,
+            fallback: p.username,
+        })),
+    ];
+
+    const cardBody = (
+        <div className="flex h-full flex-col gap-3 p-4">
+            {/* Top row: language badges + live/full indicator */}
+            <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap gap-1.5">
+                    {languages.slice(0, 2).map((lang) => (
+                        <LanguageBadge key={lang} language={lang} size="sm" />
+                    ))}
+                    {languages.length > 2 && (
+                        <span className="text-xs text-text-tertiary">+{languages.length - 2}</span>
+                    )}
+                </div>
+                {isFull ? (
+                    <span className="inline-flex items-center rounded-full border border-status-warning/30 bg-status-warning/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-status-warning">
+                        Full
+                    </span>
+                ) : (
+                    isLive && (
+                        <span className="flex items-center gap-1.5 text-xs font-medium text-voice-speaking">
+                            <VoiceWaveIcon className="h-4 w-4" />
+                            Live
+                        </span>
+                    )
+                )}
+            </div>
+
+            {/* Language (bold) + level (italic grey) */}
+            <div>
+                <h3 className="text-base leading-snug text-text-primary transition-colors group-hover:text-primary-300">
+                    <span className="font-bold">{primaryLanguage}</span>
+                    {level && (
+                        <span className="font-normal italic text-text-tertiary"> · {level}</span>
+                    )}
+                </h3>
+                {/* Room name */}
+                <p className="mt-0.5 line-clamp-1 text-sm text-text-secondary">{name}</p>
+                {/* Topic line — emoji-friendly */}
+                {topic && (
+                    <p className="mt-0.5 line-clamp-1 text-sm text-text-secondary/90">{topic}</p>
+                )}
+            </div>
+
+            {/* Overlapping member avatars + live count */}
+            <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+                <AvatarGroup avatars={avatarList} max={4} size="sm" />
+                <span className="whitespace-nowrap text-xs text-text-secondary">
+                    <span className="font-semibold text-text-primary">{participantCount}</span>{' '}
+                    talking now
+                </span>
+            </div>
+
+            {/* Join CTA — dashed border; whole card is clickable when not full */}
+            <span
                 className={cn(
-                    'overflow-hidden group',
-                    isFull && 'opacity-75'
+                    'block rounded-xl border-2 border-dashed px-4 py-2.5 text-center text-sm font-semibold transition-all duration-200',
+                    isFull
+                        ? 'border-surface-border text-text-tertiary'
+                        : 'border-primary-500/50 text-primary-300 group-hover:border-primary-400 group-hover:bg-primary-500/10 group-hover:text-primary-200'
                 )}
             >
-                {/* Top section with gradient */}
-                <div className="relative p-4 pb-3">
-                    {/* Live indicator */}
-                    {isLive && (
-                        <div className="absolute top-3 right-3 flex items-center gap-1.5">
-                            <VoiceWaveIcon className="h-4 w-4 text-voice-speaking" />
-                        </div>
-                    )}
+                {isFull ? 'Full' : 'Join and talk now!'}
+            </span>
+        </div>
+    );
 
-                    {/* Languages */}
-                    <div className="flex flex-wrap gap-1.5 mb-3">
-                        {languages.slice(0, 2).map((lang) => (
-                            <LanguageBadge key={lang} language={lang} size="sm" />
-                        ))}
-                        {languages.length > 2 && (
-                            <span className="text-xs text-text-tertiary">+{languages.length - 2}</span>
-                        )}
-                    </div>
-
-                    {/* Room name */}
-                    <h3 className="font-semibold text-text-primary line-clamp-1 group-hover:text-primary-400 transition-colors">
-                        {name}
-                    </h3>
-
-                    {/* Topic */}
-                    {topic && (
-                        <p className="text-sm text-text-secondary line-clamp-1 mt-0.5">
-                            {topic}
-                        </p>
-                    )}
+    return (
+        <div
+            className={cn(
+                'group relative overflow-hidden rounded-2xl border border-surface-border bg-surface-default',
+                'transition-all duration-300',
+                !isFull &&
+                    'hover:-translate-y-1 hover:border-primary-500/40 hover:shadow-[0_16px_48px_-16px_rgba(249,115,22,0.35)]',
+                isFull && 'opacity-70',
+                className
+            )}
+        >
+            {isFull ? (
+                <div className="h-full" aria-disabled="true">
+                    {cardBody}
                 </div>
-
-                {/* Bottom section */}
-                <div className="px-4 py-3 bg-surface-hover/50 border-t border-surface-borderSubtle">
-                    <div className="flex items-center justify-between">
-                        {/* Owner & Participants */}
-                        <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-2">
-                                <Avatar
-                                    src={owner.avatarUrl}
-                                    alt={owner.displayName || owner.username}
-                                    fallback={owner.displayName || owner.username}
-                                    size="xs"
-                                />
-                                <span className="text-xs text-text-secondary truncate max-w-[80px]">
-                                    {owner.displayName || owner.username}
-                                </span>
-                            </div>
-
-                            {/* Other participants */}
-                            {participants.length > 0 && (
-                                <AvatarGroup
-                                    avatars={participants.map(p => ({
-                                        src: p.avatarUrl,
-                                        alt: p.username,
-                                        fallback: p.username,
-                                    }))}
-                                    max={3}
-                                    size="xs"
-                                />
-                            )}
-                        </div>
-
-                        {/* Participant count */}
-                        <ParticipantBadge count={participantCount} max={maxParticipants} size="sm" />
-                    </div>
-                </div>
-            </Card>
-        </Link>
+            ) : (
+                <Link
+                    href={`/rooms/${id}`}
+                    className="block h-full rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                >
+                    {cardBody}
+                </Link>
+            )}
+        </div>
     );
 }
 
@@ -134,6 +165,8 @@ export function RoomCardCompact({
     maxParticipants,
     owner,
     isLive = true,
+    level,
+    className,
 }: RoomCardProps) {
     const isFull = participantCount >= maxParticipants;
 
@@ -144,7 +177,8 @@ export function RoomCardCompact({
                 padding="sm"
                 className={cn(
                     'flex items-center gap-3',
-                    isFull && 'opacity-75'
+                    isFull && 'opacity-75',
+                    className
                 )}
             >
                 {/* Avatar */}
@@ -175,6 +209,9 @@ export function RoomCardCompact({
                                 <LanguageBadge key={lang} language={lang} size="sm" />
                             ))}
                         </div>
+                        {level && (
+                            <span className="text-xs italic text-text-tertiary">{level}</span>
+                        )}
                     </div>
                 </div>
 

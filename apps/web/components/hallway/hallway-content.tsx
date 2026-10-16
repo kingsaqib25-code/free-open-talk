@@ -37,6 +37,7 @@ interface RoomListItem {
     languages: string[];
     participantCount: number;
     maxParticipants: number;
+    level?: string;
     owner: {
         id: string;
         username: string;
@@ -49,6 +50,20 @@ export function HallwayContent() {
 
     // Live directory from Convex (reactive subscription, no REST/Socket.io).
     const { rooms, isLoading } = useRoomDirectory(selectedLanguage ?? undefined);
+    // Unfiltered directory — drives the live per-language room counts.
+    const { rooms: allRooms } = useRoomDirectory();
+
+    // Live room counts per language, e.g. { All: 12, English: 5, Urdu: 2 }.
+    const languageCounts = useMemo(() => {
+        const counts: Record<string, number> = { All: 0 };
+        if (!allRooms) return counts;
+        for (const room of allRooms) {
+            counts.All += 1;
+            const lang = (room as any).language as string | undefined;
+            if (lang) counts[lang] = (counts[lang] ?? 0) + 1;
+        }
+        return counts;
+    }, [allRooms]);
 
     // Map Convex room docs onto the RoomCard prop shape.
     const items: RoomListItem[] = useMemo(() => {
@@ -60,6 +75,7 @@ export function HallwayContent() {
             languages: room.language ? [room.language] : [],
             participantCount: room.participantCount ?? 0,
             maxParticipants: room.maxParticipants,
+            level: room.level,
             owner: {
                 id: room.ownerDeviceId,
                 username: 'Host',
@@ -128,10 +144,11 @@ export function HallwayContent() {
                 />
             </div>
 
-            {/* Language filter */}
+            {/* Language filter pills with live room counts */}
             <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
                 <FilterPill
                     label="All"
+                    count={languageCounts.All}
                     active={selectedLanguage === null}
                     onClick={() => setSelectedLanguage(null)}
                 />
@@ -139,6 +156,7 @@ export function HallwayContent() {
                     <FilterPill
                         key={lang}
                         label={lang}
+                        count={languageCounts[lang] ?? 0}
                         active={selectedLanguage === lang}
                         onClick={() =>
                             setSelectedLanguage(selectedLanguage === lang ? null : lang)
@@ -176,10 +194,12 @@ export function HallwayContent() {
 
 function FilterPill({
     label,
+    count,
     active,
     onClick,
 }: {
     label: string;
+    count?: number;
     active: boolean;
     onClick: () => void;
 }) {
@@ -195,6 +215,11 @@ function FilterPill({
             )}
         >
             {label}
+            {count !== undefined && (
+                <span className={cn('ml-1.5', active ? 'text-white/80' : 'text-text-tertiary')}>
+                    · {count}
+                </span>
+            )}
         </button>
     );
 }
