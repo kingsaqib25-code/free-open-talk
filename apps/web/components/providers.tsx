@@ -5,6 +5,7 @@ import { useState, type ReactNode } from 'react';
 import { ThemeProvider } from '@/lib/design-system/theme';
 import { AuthProvider } from '@/components/auth-provider';
 import { GoogleAuthProvider } from '@/components/auth/google-auth-provider';
+import { ConvexClientProvider } from '@/components/convex-provider';
 
 export function Providers({ children }: { children: ReactNode }) {
     const [queryClient] = useState(
@@ -24,12 +25,14 @@ export function Providers({ children }: { children: ReactNode }) {
     );
 
     return (
-        <QueryClientProvider client={queryClient}>
-            <ThemeProvider defaultTheme="dark" enableSystem={false}>
-                <GoogleAuthProvider>
-                    <AuthProvider>{children}</AuthProvider>
-                </GoogleAuthProvider>
-            </ThemeProvider>
-        </QueryClientProvider>
+        <ConvexClientProvider>
+            <QueryClientProvider client={queryClient}>
+                <ThemeProvider defaultTheme="dark" enableSystem={false}>
+                    <GoogleAuthProvider>
+                        <AuthProvider>{children}</AuthProvider>
+                    </GoogleAuthProvider>
+                </ThemeProvider>
+            </QueryClientProvider>
+        </ConvexClientProvider>
     );
 }
