@@ -20,8 +20,6 @@ import {
     MicOff,
     Video,
     VideoOff,
-    Monitor,
-    MonitorOff,
     PhoneOff,
     UserPlus,
     UserMinus,
@@ -32,6 +30,12 @@ import {
 import { useVoice, type RemoteParticipant } from '@/lib/services/p2p';
 import type { RoomMediaState } from '@/lib/hooks/use-convex-room';
 import { ParticipantMenu } from '@/components/room/participant-menu';
+import {
+    ScreenShareShareButton,
+    ScreenShareHostControls,
+    RemoteScreenPiPButton,
+    useRemoteScreenPaused,
+} from '@/components/room/watch-party';
 
 export interface PresenceParticipant {
     deviceId: string;
@@ -117,6 +121,7 @@ function RemoteTile({
     const videoStream = useTrackStream(mesh?.videoTrack ?? null);
     const screenStream = useTrackStream(mesh?.screenTrack ?? null);
     const speaking = mesh?.isSpeaking ?? false;
+    const screenPaused = useRemoteScreenPaused(participant.deviceId);
     const label = (extra?: string) =>
         extra ? `${participant.nickname} · ${extra}` : participant.nickname;
 
@@ -169,6 +174,17 @@ function RemoteTile({
                     <Hand className="h-4 w-4" />
                 </span>
             )}
+            {/* Screen-share: paused badge + viewer PiP */}
+            {screenStream && (
+                <div className="absolute bottom-2 right-2 z-10 flex items-center gap-1.5">
+                    {screenPaused && (
+                        <span className="px-2 py-0.5 rounded-full bg-black/70 text-amber-300 text-[11px] font-medium border border-amber-500/40">
+                            Paused
+                        </span>
+                    )}
+                    <RemoteScreenPiPButton stream={screenStream} />
+                </div>
+            )}
             {showAdmin && !fill && (
                 <div className="mt-1.5 flex justify-center">
                     {participant.role === 'listener' ? (
@@ -218,8 +234,6 @@ export function VoicePanel({ roomId, roomMode, participants, deviceId, onMediaSt
         leaveRoom,
         toggleMute,
         setVideoEnabled,
-        startScreenShare,
-        stopScreenShare,
         setPublishing,
     } = voice;
 
@@ -497,16 +511,8 @@ export function VoicePanel({ roomId, roomMode, participants, deviceId, onMediaSt
                                         {isVideoOn ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
                                     </Button>
                                 )}
-                                <Button
-                                    size="icon"
-                                    variant={isSharingScreen ? 'secondary' : 'outline'}
-                                    onClick={() =>
-                                        (isSharingScreen ? stopScreenShare() : startScreenShare()).catch(() => {})
-                                    }
-                                    aria-label={isSharingScreen ? 'Stop sharing' : 'Share screen'}
-                                >
-                                    {isSharingScreen ? <MonitorOff className="h-5 w-5" /> : <Monitor className="h-5 w-5" />}
-                                </Button>
+                                <ScreenShareShareButton />
+                                <ScreenShareHostControls />
                             </>
                         )}
                         <Button size="icon" variant="danger" onClick={() => leaveRoom().catch(() => {})} aria-label="Leave">

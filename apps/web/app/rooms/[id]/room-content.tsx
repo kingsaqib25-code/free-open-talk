@@ -10,9 +10,9 @@
  * where the P2P mesh will plug in; everything else (presence, chat)
  * already works on Convex.
  */
-import { useState, useMemo, memo, useCallback } from 'react';
+import { useState, useMemo, memo, useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { useQuery } from 'convex/react';
+import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { cn } from '@/lib/design-system';
 import {
@@ -46,7 +46,14 @@ import {
     WatchPartyHeaderButton,
     WatchPartyStartModal,
     WatchPartyOverlay,
+    ScreenSharePreviewModal,
 } from '@/components/room/watch-party';
+import ReactionBar, {
+    useReactionSender,
+} from '@/components/engagement/ReactionBar';
+import ReactionOverlay, { type ReactionEvent } from '@/components/engagement/ReactionOverlay';
+import ConfettiBurst from '@/components/engagement/ConfettiBurst';
+import { useMilestone } from '@/components/engagement/useMilestone';
 import { getBlockedDevices } from '@/lib/blocked';
 import { Hand, Smile, Reply } from '@/components/ui/icons';
 
@@ -180,7 +187,7 @@ export function RoomContent({ roomId }: RoomContentProps) {
             ownerIsLive={ownerIsLive}
             onWatchReadyChange={handleWatchReadyChange}
         >
-        <div className="flex flex-col h-screen bg-background-primary">
+        <div className="relative flex flex-col h-screen bg-background-primary">
             {/* Header */}
             <header className="flex items-center justify-between px-4 py-3 border-b border-surface-border bg-background-secondary/50">
                 <div className="flex items-center gap-3 min-w-0">
@@ -363,9 +370,122 @@ export function RoomContent({ roomId }: RoomContentProps) {
         </div>
         <WatchPartyStartModal />
         <WatchPartyOverlay />
+        <ScreenSharePreviewModal />
+        <RoomReactions
+            roomId={roomId}
+            deviceId={deviceId}
+            peerDeviceIds={participantList.map((p) => p.deviceId)}
+        />
+        <MilestoneCelebration
+            roomId={roomId}
+            deviceId={deviceId}
+            nickname={myParticipant?.nickname ?? 'Guest'}
+        />
         </WatchPartyProvider>
         </VoiceProvider>
     );
+}
+
+/** Floating emoji reactions (Messenger-style) + reaction bar, synced via signals. */
+function RoomReactions({
+    roomId,
+    deviceId,
+    peerDeviceIds,
+}: {
+    roomId: string;
+    deviceId: string;
+    peerDeviceIds: string[];
+}) {
+    const [events, setEvents] = useState<ReactionEvent[]>([]);
+    const send = useReactionSender(roomId as any, deviceId);
+    const pollSignals = useMutation(api.signals.poll);
+
+    const addEvent = useCallback((emoji: string) => {
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const x = 5 + Math.random() * 85;
+        setEvents((prev) => [...prev.slice(-19), { id, emoji, x }]);
+        window.setTimeout(() => {
+            setEvents((prev) => prev.filter((e) => e.id !== id));
+        }, 2100);
+    }, []);
+
+    // Poll for incoming reaction signals from peers.
+    useEffect(() => {
+        let alive = true;
+        const tick = async () => {
+            try {
+                const sigs = await pollSignals({ roomId: roomId as any, deviceId });
+                if (!alive) return;
+                for (const s of sigs) {
+                    if (s.type === 'reaction') {
+                        try {
+                            const parsed = JSON.parse(s.payload) as { emoji?: string };
+                            if (parsed.emoji) addEvent(parsed.emoji);
+                        } catch {
+                            /* ignore malformed payloads */
+                        }
+                    }
+                }
+            } catch {
+                /* poll failures are non-fatal */
+            }
+        };
+        void tick();
+        const iv = window.setInterval(tick, 2500);
+        return () => {
+            alive = false;
+            window.clearInterval(iv);
+        };
+    }, [pollSignals, roomId, deviceId, addEvent]);
+
+    const handleReact = useCallback(
+        (emoji: string) => {
+            addEvent(emoji);
+            void send(emoji, peerDeviceIds);
+        },
+        [addEvent, send, peerDeviceIds]
+    );
+
+    return (
+        <>
+            <ReactionOverlay events={events} />
+            <div className="fixed bottom-24 right-3 z-40 md:bottom-8 md:right-6">
+                <ReactionBar onReact={handleReact} />
+            </div>
+        </>
+    );
+}
+
+/** Streak milestone celebration: confetti + room announcement on 7/30/100 days. */
+function MilestoneCelebration({
+    roomId,
+    deviceId,
+    nickname,
+}: {
+    roomId: string;
+    deviceId: string;
+    nickname: string;
+}) {
+    const { pendingMilestone, claim } = useMilestone(deviceId);
+    const [burstKey, setBurstKey] = useState(0);
+    const sendChat = useSendChat(roomId);
+    const announcedRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        if (pendingMilestone && announcedRef.current !== pendingMilestone) {
+            announcedRef.current = pendingMilestone;
+            setBurstKey((k) => k + 1);
+            void claim().then((claimed) => {
+                if (claimed) {
+                    void sendChat(
+                        `🎉 ${nickname} just hit a ${pendingMilestone}-day streak! Keep the fire burning 🔥`
+                    ).catch(() => {});
+                }
+            });
+        }
+    }, [pendingMilestone, claim, sendChat, nickname]);
+
+    return <ConfettiBurst burstKey={burstKey} />;
 }
 
 type ChatMessage = {

@@ -1,11 +1,15 @@
 'use client';
 
 import Link from 'next/link';
+import { useQuery } from 'convex/react';
+import { api } from '@/convex/_generated/api';
 import { cn } from '@/lib/design-system';
 import { Card } from './card';
 import { Avatar, AvatarGroup } from './avatar';
 import { LanguageBadge, ParticipantBadge } from './badge';
 import { VoiceWaveIcon } from './icons';
+import ProHostBorder from '@/components/engagement/ProHostBorder';
+import TierBadge from '@/components/engagement/TierBadge';
 
 export interface RoomCardProps {
     id: string;
@@ -48,6 +52,10 @@ export function RoomCard({
 }: RoomCardProps) {
     const isFull = participantCount >= maxParticipants;
     const primaryLanguage = languages[0] ?? name;
+
+    // Host trust: Pro+ hosts (30+ day streak) get the animated award border.
+    const hostStreak = useQuery(api.streaks.hostStreak, { deviceId: owner.id }) ?? 0;
+    const isProHost = hostStreak >= 30;
 
     // Owner first, then participants — overlapping circular avatars.
     const avatarList = [
@@ -105,13 +113,25 @@ export function RoomCard({
                 )}
             </div>
 
-            {/* Overlapping member avatars + live count */}
+            {/* Overlapping member avatars + live count + host trust */}
             <div className="mt-auto flex items-center justify-between gap-2 pt-1">
                 <AvatarGroup avatars={avatarList} max={4} size="sm" />
-                <span className="whitespace-nowrap text-xs text-text-secondary">
-                    <span className="font-semibold text-text-primary">{participantCount}</span>{' '}
-                    talking now
-                </span>
+                <div className="flex flex-col items-end gap-1">
+                    <span className="whitespace-nowrap text-xs text-text-secondary">
+                        <span className="font-semibold text-text-primary">{participantCount}</span>{' '}
+                        talking now
+                    </span>
+                    {hostStreak > 0 && (
+                        <span className="flex items-center gap-1.5">
+                            <TierBadge streak={hostStreak} size="sm" />
+                            {hostStreak >= 2 && (
+                                <span className="whitespace-nowrap text-[11px] text-text-tertiary">
+                                    🔥 {hostStreak}d host streak
+                                </span>
+                            )}
+                        </span>
+                    )}
+                </div>
             </div>
 
             {/* Join CTA — dashed border; whole card is clickable when not full */}
@@ -128,7 +148,33 @@ export function RoomCard({
         </div>
     );
 
-    return (
+    return isProHost ? (
+        <ProHostBorder>
+            <div
+                className={cn(
+                    'group relative h-full overflow-hidden rounded-2xl border border-surface-border bg-surface-default',
+                    'transition-all duration-300',
+                    !isFull &&
+                        'hover:-translate-y-1 hover:border-primary-500/40 hover:shadow-[0_16px_48px_-16px_rgba(249,115,22,0.35)]',
+                    isFull && 'opacity-70',
+                    className
+                )}
+            >
+                {isFull ? (
+                    <div className="h-full" aria-disabled="true">
+                        {cardBody}
+                    </div>
+                ) : (
+                    <Link
+                        href={`/rooms/${id}`}
+                        className="block h-full rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                    >
+                        {cardBody}
+                    </Link>
+                )}
+            </div>
+        </ProHostBorder>
+    ) : (
         <div
             className={cn(
                 'group relative overflow-hidden rounded-2xl border border-surface-border bg-surface-default',

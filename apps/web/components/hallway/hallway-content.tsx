@@ -23,6 +23,7 @@ import {
     Search,
     Wifi,
 } from '@/components/ui/icons';
+import LeaderboardStrip from '@/components/engagement/LeaderboardStrip';
 
 const LANGUAGES = [
     'English', 'Spanish', 'French', 'German', 'Japanese',
@@ -166,6 +167,7 @@ export function HallwayContent() {
             </div>
 
             {/* Room Grid */}
+            <LeaderboardStrip />
             <Section>
                 {isLoading ? (
                     // Initial loading skeleton
