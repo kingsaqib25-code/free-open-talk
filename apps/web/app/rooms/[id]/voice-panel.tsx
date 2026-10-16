@@ -54,6 +54,12 @@ export interface PresenceParticipant {
     handRaised: boolean;
     videoOn: boolean;
     sharingScreen: boolean;
+    /** Live activity presence (heartbeated by each participant). */
+    activity?: {
+        kind: 'idle' | 'talking' | 'watching' | 'sharing' | 'whiteboard' | 'gaming' | 'notes';
+        label?: string;
+        updatedAt: number;
+    } | null;
 }
 
 interface VoicePanelProps {

@@ -54,8 +54,9 @@ import ReactionBar, {
 import ReactionOverlay, { type ReactionEvent } from '@/components/engagement/ReactionOverlay';
 import ConfettiBurst from '@/components/engagement/ConfettiBurst';
 import { useMilestone } from '@/components/engagement/useMilestone';
-import { AppsPanel, AppsPanelButton } from '@/components/room/apps-panel';
+import { AppsPanel, AppsPanelButton, type AppKey } from '@/components/room/apps-panel';
 import { ToolsPanel, ToolsPanelButton } from '@/components/room/tools-panel';
+import { ParticipantCardHost, RoomActivityBar } from '@/components/room/participant-card';
 import { PlatformEmbed } from '@/components/room/platform-embed';
 import { Whiteboard } from '@/components/room/whiteboard';
 import { TicTacToe } from '@/components/room/tictactoe';
@@ -110,6 +111,14 @@ export function RoomContent({ roomId }: RoomContentProps) {
     const [menuNotice, setMenuNotice] = useState<string | null>(null);
     const [appsOpen, setAppsOpen] = useState(false);
     const [toolsOpen, setToolsOpen] = useState(false);
+    // Activity-card deep link: open the apps panel on a specific tab.
+    const [appsTab, setAppsTab] = useState<AppKey | null>(null);
+    const [appsNonce, setAppsNonce] = useState(0);
+    const openApp = useCallback((app: AppKey) => {
+        setAppsTab(app);
+        setAppsNonce((n) => n + 1);
+        setAppsOpen(true);
+    }, []);
 
     const participantList = useMemo(
         () => (participants ?? []) as PresenceParticipant[],
@@ -238,6 +247,9 @@ export function RoomContent({ roomId }: RoomContentProps) {
                     )}
                 </div>
             </header>
+
+            {/* Live activity bar: other participants' non-idle activities */}
+            <RoomActivityBar participants={participantList} myDeviceId={deviceId} />
 
             {room.topic && (
                 <div className="px-4 py-2 border-b border-surface-borderSubtle bg-background-secondary/30">
@@ -385,11 +397,19 @@ export function RoomContent({ roomId }: RoomContentProps) {
         <WatchPartyOverlay />
         <ScreenSharePreviewModal />
         <WatchActivityReporter roomId={roomId} />
+        <ParticipantCardHost
+            roomId={roomId}
+            myDeviceId={deviceId}
+            participants={participantList}
+            onOpenApp={openApp}
+        />
         <AppsPanel
             roomId={roomId}
             deviceId={deviceId}
             open={appsOpen}
             onClose={() => setAppsOpen(false)}
+            requestedApp={appsTab}
+            requestNonce={appsNonce}
             appViews={{
                 whiteboard: <Whiteboard roomId={roomId} deviceId={deviceId} />,
                 document: <RoomNotepad roomId={roomId} />,

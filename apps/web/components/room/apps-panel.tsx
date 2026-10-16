@@ -267,17 +267,30 @@ export function AppsPanel({
   open,
   onClose,
   appViews,
+  requestedApp,
+  requestNonce,
 }: {
   roomId: string;
   deviceId: string;
   open: boolean;
   onClose: () => void;
   appViews?: Partial<Record<AppKey, React.ReactNode>>;
+  /** Open the panel directly on a tab (driven by activity-card actions). */
+  requestedApp?: AppKey | null;
+  /** Bumps to force the requested tab even if the same app repeats. */
+  requestNonce?: number;
 }) {
   const [active, setActive] = useState<AppKey | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [ytBusy, setYtBusy] = useState(false);
   const wp = useWatchParty();
+
+  // Deep-link into a specific app tab (e.g. from a participant's
+  // activity card: "Open together", "Watch game").
+  useEffect(() => {
+    if (open && requestedApp) setActive(requestedApp);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, requestedApp, requestNonce]);
 
   const toast = (msg: string) => {
     setToastMsg(msg);
